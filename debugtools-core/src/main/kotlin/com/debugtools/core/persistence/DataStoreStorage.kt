@@ -40,17 +40,14 @@ class DataStoreStorage(
      * Synchronously reads the current [Preferences] snapshot.
      * Safe to call only from IO threads — see class-level threading contract.
      */
-    private fun snapshot(): Preferences = runBlocking(Dispatchers.IO) {
+    // No explicit dispatcher: runBlocking creates its own event loop on the calling thread,
+    // avoiding IO thread pool exhaustion that could deadlock if called from an IO coroutine.
+    private fun snapshot(): Preferences = runBlocking {
         dataStore.data.first()
     }
 
-    /**
-     * Synchronously performs an edit by blocking the calling (IO) thread until
-     * DataStore has persisted the change. This guarantees write-then-read consistency
-     * within the same thread and is safe here because callers are always on IO threads.
-     */
     private fun write(block: suspend (MutablePreferences) -> Unit) {
-        runBlocking(Dispatchers.IO) { dataStore.edit { block(it) } }
+        runBlocking { dataStore.edit { block(it) } }
     }
 
     // ------------------------------------------------------------------
@@ -105,7 +102,9 @@ class DataStoreStorage(
      * since all IO runs in [runBlocking], there is no scope to cancel here. A future
      * async variant (with fire-and-forget writes) should cancel its scope here.
      */
-    fun close() { /* no-op: runBlocking writes need no cancellation */ }
+    fun close() {
+        synchronized(datastores) { datastores.remove(name) }
+    }
 }
 
 // ---------------------------------------------------------------------------
