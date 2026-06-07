@@ -4,6 +4,12 @@ internal class ScopedStorage(
     private val moduleId: String,
     private val delegate: SettingsStorage
 ) : SettingsStorage {
+    init {
+        require(moduleId.isNotEmpty() && !moduleId.contains("/")) {
+            "moduleId must be non-empty and must not contain '/': '$moduleId'"
+        }
+    }
+
     private fun k(key: String) = "$moduleId/$key"
 
     override fun putString(key: String, value: String) = delegate.putString(k(key), value)
