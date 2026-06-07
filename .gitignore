@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+*.apk
+*.aar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Environment
+.env
+local.properties
+
+# Session artifacts (Claude Code)
+.claude/
+.superpowers/
