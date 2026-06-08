@@ -17,6 +17,7 @@ android {
 
 dependencies {
     implementation(project(":debugtools-core"))
+    implementation("androidx.annotation:annotation:1.7.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
