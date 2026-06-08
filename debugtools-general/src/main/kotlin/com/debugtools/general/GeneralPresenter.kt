@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class GeneralPresenter(
     private val diskMonitors: List<DiskMonitor>,
@@ -14,10 +15,8 @@ class GeneralPresenter(
     private val scope: CoroutineScope
 ) {
     private var view: GeneralView? = null
-    // Own independent supervisor job so collector coroutines are NOT children of the
-    // caller's scope/job — this prevents runTest from flagging them as uncompleted.
-    // Inherit the caller's dispatcher (ContinuationInterceptor) so test coroutines
-    // run on the test dispatcher and advanceUntilIdle() drives them.
+    // Inherit the caller's dispatcher so test coroutines run on the test dispatcher.
+    // View callbacks switch to Main before touching Views.
     private val supervisorJob = SupervisorJob()
     private val presenterScope = CoroutineScope(
         (scope.coroutineContext[ContinuationInterceptor] ?: Dispatchers.Main) + supervisorJob
@@ -32,7 +31,9 @@ class GeneralPresenter(
                 combine(flows) { sizes ->
                     diskMonitors.indices.map { i -> Pair(diskMonitors[i].path, sizes[i]) }
                 }.collect { sizes ->
-                    this@GeneralPresenter.view?.showDiskSizes(sizes)
+                    withContext(Dispatchers.Main) {
+                        this@GeneralPresenter.view?.showDiskSizes(sizes)
+                    }
                 }
             }
         }
@@ -42,7 +43,9 @@ class GeneralPresenter(
                 combine(flows) { stateMaps ->
                     stateMaps.flatMap { it.entries }.map { Pair(it.key, it.value) }
                 }.collect { states ->
-                    this@GeneralPresenter.view?.showProcessStates(states)
+                    withContext(Dispatchers.Main) {
+                        this@GeneralPresenter.view?.showProcessStates(states)
+                    }
                 }
             }
         }
