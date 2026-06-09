@@ -37,10 +37,11 @@ internal class FloatingRootView(
 
     private fun applyMode(mode: DisplayMode) {
         removeAllViews()
+        val fill = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         when (mode) {
-            DisplayMode.EXPANDED  -> addView(expandedView)
-            DisplayMode.MINIMIZED -> addView(minimizedView)
-            DisplayMode.BRIEF     -> { refreshBriefItems(); addView(briefView) }
+            DisplayMode.EXPANDED  -> addView(expandedView, fill)
+            DisplayMode.MINIMIZED -> addView(minimizedView, fill)
+            DisplayMode.BRIEF     -> { refreshBriefItems(); addView(briefView, fill) }
         }
     }
 

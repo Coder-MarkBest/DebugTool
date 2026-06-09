@@ -24,9 +24,7 @@ internal class MinimizedView(
     private var touchDownParamY = 0f
 
     init {
-        val sizePx = (56 * resources.displayMetrics.density).toInt()
-        layoutParams.width = sizePx
-        layoutParams.height = sizePx
+        // Window sizing is handled by FloatingWindowManager; this view just fills it.
         setBackgroundColor(Color.parseColor("#CC4A90E2"))
         addView(TextView(context).apply {
             text = "🐛"
@@ -72,12 +70,16 @@ internal class MinimizedView(
 
     private fun snapToEdge(currentRawX: Float) {
         val screenWidth = resources.displayMetrics.widthPixels
-        val targetX = if (currentRawX < screenWidth / 2f) 0 else screenWidth - layoutParams.width
+        // gravity is TOP|START in MINIMIZED mode, so x=0 is left edge,
+        // x = screenWidth - width is right edge.
+        val targetX = if (currentRawX < screenWidth / 2f) 0 else screenWidth - width
         ObjectAnimator.ofInt(layoutParams.x, targetX).apply {
             duration = 200
             addUpdateListener { anim ->
                 layoutParams.x = anim.animatedValue as Int
-                windowManager.updateViewLayout(this@MinimizedView, layoutParams)
+                try {
+                    windowManager.updateViewLayout(this@MinimizedView, layoutParams)
+                } catch (_: Exception) { /* View may be detached during mode switch */ }
             }
             start()
         }
