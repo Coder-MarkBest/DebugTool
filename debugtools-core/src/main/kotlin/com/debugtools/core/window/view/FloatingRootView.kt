@@ -22,9 +22,12 @@ internal class FloatingRootView(
     private var modules: List<DebugModule> = emptyList()
 
     init {
+        expandedView.onMinimizeClick = { modeManager.setMode(DisplayMode.MINIMIZED) }
+        expandedView.onBriefClick = { modeManager.setMode(DisplayMode.BRIEF) }
         minimizedView.onClick = { modeManager.setMode(DisplayMode.EXPANDED) }
         minimizedView.onLongClick = { modeManager.setMode(DisplayMode.BRIEF) }
         briefView.onClick = { modeManager.setMode(DisplayMode.EXPANDED) }
+        briefView.onLongClick = { modeManager.setMode(DisplayMode.MINIMIZED) }
         modeManager.addListener { applyMode(it) }
         applyMode(modeManager.currentMode)
     }

@@ -13,12 +13,14 @@ internal class BriefView(
 ) : LinearLayout(context) {
 
     var onClick: (() -> Unit)? = null
+    var onLongClick: (() -> Unit)? = null
 
     init {
         this.orientation = if (orientation == BriefOrientation.VERTICAL) VERTICAL else HORIZONTAL
         setBackgroundColor(Color.parseColor("#CC1A1A2E"))
         setPadding(8, 8, 8, 8)
         setOnClickListener { onClick?.invoke() }
+        setOnLongClickListener { onLongClick?.invoke(); true }
     }
 
     fun update(items: List<BriefItem>) {
