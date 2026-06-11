@@ -12,12 +12,12 @@ internal class FloatingRootView(
     context: Context,
     private val modeManager: DisplayModeManager,
     briefOrientation: BriefOrientation,
-    windowManager: WindowManager,
+    private val windowManager: WindowManager,
     private val layoutParams: WindowManager.LayoutParams
 ) : FrameLayout(context) {
 
     private val expandedView = ExpandedView(context)
-    private val minimizedView = MinimizedView(context, windowManager, layoutParams)
+    private val minimizedView = MinimizedView(context, layoutParams) { syncWindowLayout() }
     private val briefView = BriefView(context, briefOrientation)
     private var modules: List<DebugModule> = emptyList()
 
@@ -51,4 +51,17 @@ internal class FloatingRootView(
     private fun refreshBriefItems() {
         briefView.update(modules.flatMap { it.getBriefItems() })
     }
+
+    /** Called by children when they mutate [layoutParams] (e.g. drag). */
+    private fun syncWindowLayout() {
+        // Only update if this root view is actually attached to the WindowManager
+        if (isAttachedToWindow) {
+            try {
+                windowManager.updateViewLayout(this, layoutParams)
+            } catch (_: IllegalArgumentException) {
+                // Window was removed between detection and update; safe to ignore
+            }
+        }
+    }
+
 }

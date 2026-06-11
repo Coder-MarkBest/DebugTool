@@ -11,8 +11,8 @@ import android.widget.TextView
 
 internal class MinimizedView(
     context: Context,
-    private val windowManager: WindowManager,
-    private val layoutParams: WindowManager.LayoutParams
+    private val layoutParams: WindowManager.LayoutParams,
+    private val onWindowLayoutChanged: () -> Unit
 ) : FrameLayout(context) {
 
     var onClick: (() -> Unit)? = null
@@ -22,9 +22,9 @@ internal class MinimizedView(
     private var touchDownRawY = 0f
     private var touchDownParamX = 0f
     private var touchDownParamY = 0f
+    private var didDrag = false
 
     init {
-        // Window sizing is handled by FloatingWindowManager; this view just fills it.
         setBackgroundColor(Color.parseColor("#CC4A90E2"))
         addView(TextView(context).apply {
             text = "🐛"
@@ -46,18 +46,24 @@ internal class MinimizedView(
                 touchDownRawY = event.rawY
                 touchDownParamX = layoutParams.x.toFloat()
                 touchDownParamY = layoutParams.y.toFloat()
+                didDrag = false
                 true
             }
             MotionEvent.ACTION_MOVE -> {
-                layoutParams.x = (touchDownParamX + event.rawX - touchDownRawX).toInt()
-                layoutParams.y = (touchDownParamY + event.rawY - touchDownRawY).toInt()
-                windowManager.updateViewLayout(this, layoutParams)
+                val dx = event.rawX - touchDownRawX
+                val dy = event.rawY - touchDownRawY
+                if (!didDrag && (Math.abs(dx) > 10f || Math.abs(dy) > 10f)) {
+                    didDrag = true
+                }
+                if (didDrag) {
+                    layoutParams.x = (touchDownParamX + dx).toInt()
+                    layoutParams.y = (touchDownParamY + dy).toInt()
+                    onWindowLayoutChanged()
+                }
                 true
             }
             MotionEvent.ACTION_UP -> {
-                val movedX = Math.abs(event.rawX - touchDownRawX)
-                val movedY = Math.abs(event.rawY - touchDownRawY)
-                if (movedX < 10f && movedY < 10f) {
+                if (!didDrag) {
                     onClick?.invoke()
                 } else {
                     snapToEdge(event.rawX)
@@ -78,7 +84,7 @@ internal class MinimizedView(
             addUpdateListener { anim ->
                 layoutParams.x = anim.animatedValue as Int
                 try {
-                    windowManager.updateViewLayout(this@MinimizedView, layoutParams)
+                    onWindowLayoutChanged()
                 } catch (_: Exception) { /* View may be detached during mode switch */ }
             }
             start()
