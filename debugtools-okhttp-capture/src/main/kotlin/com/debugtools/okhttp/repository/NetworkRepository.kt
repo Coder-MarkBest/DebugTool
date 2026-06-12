@@ -118,6 +118,20 @@ class NetworkRepository(private val config: Config) {
         publish()
     }
 
+    /**
+     * Attach timing data to the most recent HttpRecord matching the given URL.
+     * Called post-hoc by TimingEventListener after callEnd/callFailed.
+     */
+    @Synchronized
+    fun attachTimingByUrl(url: String, timing: com.debugtools.okhttp.data.Timing) {
+        val index = httpRecords.indexOfLast { it.url == url && it.timing == null }
+        if (index >= 0) {
+            val record = httpRecords[index]
+            httpRecords[index] = record.copy(timing = timing)
+            publish()
+        }
+    }
+
     private fun publish() {
         _state.value = Snapshot(
             httpRecords = httpRecords.toList(),
