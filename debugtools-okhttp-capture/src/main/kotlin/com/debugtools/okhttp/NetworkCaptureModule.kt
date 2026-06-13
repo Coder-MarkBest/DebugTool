@@ -2,7 +2,6 @@ package com.debugtools.okhttp
 
 import android.content.Context
 import android.view.View
-import android.widget.TextView
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
 import com.debugtools.core.persistence.SettingsStorage
@@ -11,7 +10,13 @@ import com.debugtools.okhttp.capture.CapturingInterceptor
 import com.debugtools.okhttp.capture.CapturingListener
 import com.debugtools.okhttp.capture.CapturingWebSocket
 import com.debugtools.okhttp.capture.TimingEventListener
+import com.debugtools.okhttp.presenter.NetworkCapturePresenter
 import com.debugtools.okhttp.repository.NetworkRepository
+import com.debugtools.okhttp.view.NetworkCaptureRootView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import okhttp3.EventListener
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -43,6 +48,9 @@ class NetworkCaptureModule private constructor(
     override val tabTitle: String = "网络抓包"
 
     private val repository = NetworkRepository(config)
+    private var presenter: NetworkCapturePresenter? = null
+    private var scope: CoroutineScope? = null
+    private var rootView: NetworkCaptureRootView? = null
 
     fun httpInterceptor(): Interceptor = CapturingInterceptor(repository, config)
 
@@ -70,11 +78,15 @@ class NetworkCaptureModule private constructor(
     override fun buildSettings(): List<SettingGroup> = emptyList()
 
     override fun createContentView(context: Context): View {
-        // V1 placeholder; full UI added in later tasks
-        return TextView(context).apply {
-            text = "Network Capture: ${repository.snapshot().httpRecords.size} HTTP, " +
-                "${repository.snapshot().webSocketSessions.size} WS"
-        }
+        val view = NetworkCaptureRootView(
+            context = context,
+            config = config,
+            repository = repository,
+            onToggleSession = { presenter?.toggleSessionExpanded(it) }
+        )
+        rootView = view
+        presenter?.attachView(view)
+        return view
     }
 
     override fun getBriefItems(): List<BriefItem> {
@@ -91,11 +103,17 @@ class NetworkCaptureModule private constructor(
     }
 
     override fun onAttach(context: Context, storage: SettingsStorage) {
-        // Presenter wiring added in Task 9/15
+        val s = CoroutineScope(Dispatchers.Main + SupervisorJob())
+        scope = s
+        presenter = NetworkCapturePresenter(repository, s)
+        rootView?.let { presenter?.attachView(it) }
     }
 
     override fun onDetach() {
-        // Presenter cleanup added in Task 9/15
+        presenter?.detach()
+        presenter = null
+        scope?.cancel()
+        scope = null
     }
 
     /** Test-only accessor for the underlying repository. */
