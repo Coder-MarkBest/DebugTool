@@ -18,6 +18,7 @@ import com.debugtools.core.ipc.model.DebugEvent
 import com.debugtools.general.GeneralModule
 import com.debugtools.network.NetworkModule
 import com.debugtools.okhttp.NetworkCaptureModule
+import com.debugtools.perfmon.PerfMonitorModule
 import com.debugtools.timeline.TimelineModule
 import kotlinx.coroutines.Job
 import okhttp3.OkHttpClient
@@ -35,6 +36,13 @@ class MainActivity : AppCompatActivity() {
     private val timelineModule = TimelineModule.create(maxSize = 200)
     private val voiceModule = VoiceAssistantModule()
     private val captureModule = NetworkCaptureModule.create()
+    private val perfModule by lazy {
+        PerfMonitorModule.builder()
+            .addProcessByName(packageName)
+            .updateIntervalSec(10)
+            .windowMin(30)
+            .build()
+    }
     private lateinit var captureClient: OkHttpClient
     private var sampleWs: WebSocket? = null
     private var mockEventJob: Job? = null
@@ -166,6 +174,7 @@ class MainActivity : AppCompatActivity() {
             DebugTools.builder(this)
                 .processMode(ProcessMode.ATTACHED)
                 .register(captureModule)
+                .register(perfModule)
                 .register(voiceModule)
                 .register(NetworkModule.create("8.8.8.8"))
                 .register(timelineModule)
