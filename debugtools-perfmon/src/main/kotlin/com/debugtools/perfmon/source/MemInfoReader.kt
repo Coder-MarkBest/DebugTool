@@ -23,18 +23,16 @@ class MemInfoReader(context: Context) {
 
     fun read(pid: Int): Memory? = try {
         val info = am.getProcessMemoryInfo(intArrayOf(pid))
-        val m = info.firstOrNull()
-        Memory(
-            totalPssKb = m?.totalPss ?: 0,
-            dalvikPssKb = m?.dalvikPss ?: 0,
-            nativePssKb = m?.nativePss ?: 0,
-            otherPssKb = m?.otherPss ?: 0
-        )
-    } catch (_: SecurityException) {
-        null
+        if (info.isEmpty()) null else {
+            val m = info[0]
+            Memory(
+                totalPssKb = m.totalPss,
+                dalvikPssKb = m.dalvikPss,
+                nativePssKb = m.nativePss,
+                otherPssKb = m.otherPss
+            )
+        }
     } catch (_: Exception) {
-        // getProcessMemoryInfo is not implemented in test environments (e.g. Robolectric);
-        // return zero-filled memory to signal "unavailable but not an error".
-        Memory(totalPssKb = 0, dalvikPssKb = 0, nativePssKb = 0, otherPssKb = 0)
+        null
     }
 }

@@ -26,11 +26,10 @@ class MemInfoReaderTest {
         assertTrue(result == null || result.totalPssKb == 0)
     }
 
-    @Test fun `read returns own process info for myPid`() {
+    @Test fun `read does not throw for own pid`() {
         val reader = MemInfoReader(context)
-        val result = reader.read(android.os.Process.myPid())
-        assertNotNull(result)
-        // In Robolectric, getProcessMemoryInfo may return zeros — we only check
-        // the call didn't throw.
+        // In Robolectric, getProcessMemoryInfo is unimplemented and the wrapper's catch
+        // returns null. The contract here is just "no uncaught exception".
+        reader.read(android.os.Process.myPid())
     }
 }
