@@ -17,8 +17,16 @@ import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
 import com.debugtools.general.GeneralModule
 import com.debugtools.network.NetworkModule
+import com.debugtools.okhttp.NetworkCaptureModule
 import com.debugtools.timeline.TimelineModule
 import kotlinx.coroutines.Job
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString
+import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -26,6 +34,9 @@ class MainActivity : AppCompatActivity() {
 
     private val timelineModule = TimelineModule.create(maxSize = 200)
     private val voiceModule = VoiceAssistantModule()
+    private val captureModule = NetworkCaptureModule.create()
+    private lateinit var captureClient: OkHttpClient
+    private var sampleWs: WebSocket? = null
     private var mockEventJob: Job? = null
     private var debugToolsInitialized = false
     private var mockIndex = 0
@@ -33,6 +44,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnInit: Button
     private lateinit var btnSendEvent: Button
     private lateinit var btnStartFlow: Button
+    private lateinit var btnSendHttp: Button
+    private lateinit var btnSendWs: Button
     private lateinit var btnCrash: Button
     private lateinit var logView: TextView
 
@@ -102,6 +115,20 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(btnStartFlow)
 
+        btnSendHttp = Button(this).apply {
+            text = "发送 1 个 mock HTTP 请求"
+            isEnabled = false
+            setOnClickListener { sendMockHttp() }
+        }
+        root.addView(btnSendHttp)
+
+        btnSendWs = Button(this).apply {
+            text = "建立 mock WebSocket + 发 5 帧"
+            isEnabled = false
+            setOnClickListener { sendMockWebSocket() }
+        }
+        root.addView(btnSendWs)
+
         btnCrash = Button(this).apply {
             text = "💥 模拟崩溃（测试 CrashInfo 上报）"
             isEnabled = false
@@ -138,6 +165,7 @@ class MainActivity : AppCompatActivity() {
             (application as SampleApplication).voiceModule = voiceModule
             DebugTools.builder(this)
                 .processMode(ProcessMode.ATTACHED)
+                .register(captureModule)
                 .register(voiceModule)
                 .register(NetworkModule.create("8.8.8.8"))
                 .register(timelineModule)
@@ -149,10 +177,17 @@ class MainActivity : AppCompatActivity() {
                 )
                 .build()
 
+            captureClient = OkHttpClient.Builder()
+                .addInterceptor(captureModule.httpInterceptor())
+                .eventListenerFactory(captureModule.eventListenerFactory())
+                .build()
+
             debugToolsInitialized = true
             btnInit.isEnabled = false
             btnSendEvent.isEnabled = true
             btnStartFlow.isEnabled = true
+            btnSendHttp.isEnabled = true
+            btnSendWs.isEnabled = true
             btnCrash.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用")
@@ -202,6 +237,56 @@ class MainActivity : AppCompatActivity() {
             appendLog("--- 一轮对话完成 ---")
             btnStartFlow.text = "▶ 自动模拟完整对话流程"
         }
+    }
+
+    private fun sendMockHttp() {
+        val request = Request.Builder()
+            .url("https://httpbin.org/json")
+            .build()
+        captureClient.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                runOnUiThread { appendLog("✗ HTTP 失败: ${e.message}") }
+            }
+            override fun onResponse(call: okhttp3.Call, response: Response) {
+                val code = response.code
+                response.close()
+                runOnUiThread { appendLog("✓ HTTP $code") }
+            }
+        })
+    }
+
+    private fun sendMockWebSocket() {
+        val existing = sampleWs
+        if (existing != null) {
+            existing.send("ping-${System.currentTimeMillis() % 10000}")
+            appendLog("→ WS send ping")
+            return
+        }
+        val request = Request.Builder()
+            .url("wss://echo.websocket.events")
+            .build()
+        sampleWs = captureModule.newWebSocket(captureClient, request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                runOnUiThread { appendLog("✓ WS open") }
+                for (i in 1..5) {
+                    webSocket.send("frame-$i")
+                }
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                runOnUiThread { appendLog("← WS recv: $text") }
+            }
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                runOnUiThread { appendLog("← WS recv bin ${bytes.size}B") }
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                runOnUiThread { appendLog("⊘ WS closed $code $reason") }
+                sampleWs = null
+            }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                runOnUiThread { appendLog("✗ WS failure: ${t.message}") }
+                sampleWs = null
+            }
+        })
     }
 
     private fun simulateCrash() {
