@@ -6,7 +6,6 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
@@ -28,7 +27,6 @@ class PerfPresenter(
                 Pair(state, selKey)
             }
                 .let { if (sampleMs > 0) it.sample(sampleMs) else it }
-                .distinctUntilChanged()
 
             source.collect { (state, selKey) ->
                 val rows = buildRows(state, selKey)

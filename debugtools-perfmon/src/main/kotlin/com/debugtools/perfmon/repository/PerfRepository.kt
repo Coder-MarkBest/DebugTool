@@ -16,17 +16,20 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class PerfRepository(private val config: Config) {
 
-    /** Immutable snapshot for UI. The TimeSeries instances inside are also internally
-     *  immutable views; UI only reads via [TimeSeries.snapshot]. */
+    /** Immutable snapshot for UI. The TimeSeries instances inside are mutable references
+     *  shared across publishes — [tick] ensures structural inequality so the StateFlow
+     *  re-emits even when only TimeSeries contents changed (TimeSeries uses identity equality). */
     data class Snapshot(
         val series: Map<String, TimeSeries<ProcessSample>>,
-        val detail: ProcessDetail?
+        val detail: ProcessDetail?,
+        val tick: Long = 0L
     )
 
     private val seriesByTargetKey = LinkedHashMap<String, TimeSeries<ProcessSample>>()
     private val _state = MutableStateFlow(Snapshot(series = emptyMap(), detail = null))
     val state: StateFlow<Snapshot> = _state
     private var detail: ProcessDetail? = null
+    private var tickCounter: Long = 0L
 
     @Synchronized
     fun addSample(sample: ProcessSample) {
@@ -53,7 +56,8 @@ class PerfRepository(private val config: Config) {
     private fun publish() {
         _state.value = Snapshot(
             series = seriesByTargetKey.toMap(),
-            detail = detail
+            detail = detail,
+            tick = ++tickCounter
         )
     }
 }
