@@ -2,6 +2,7 @@ package com.debugtools.perfmon.presenter
 
 import com.debugtools.perfmon.repository.PerfRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 
+@OptIn(FlowPreview::class)
 class PerfPresenter(
     private val repository: PerfRepository,
     private val scope: CoroutineScope,

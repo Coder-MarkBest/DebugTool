@@ -47,7 +47,7 @@ class ProcessDetailView(context: Context, private val config: Config) : ScrollVi
         container.addView(title)
         container.addView(label("CPU% 趋势"))
         container.addView(cpuChart)
-        container.addView(label("内存 PSS（KB）"))
+        container.addView(label("内存 RSS（KB）"))
         container.addView(memChart)
         container.addView(pssText)
         container.addView(label("Top ${config.topThreadCount} 线程 CPU%"))
@@ -88,7 +88,7 @@ class ProcessDetailView(context: Context, private val config: Config) : ScrollVi
                 "Native: ${detail.nativePssKb} KB  " +
                 "Other: ${detail.otherPssKb} KB"
             memChart.setSeries(listOf(
-                LineChartView.Series("PSS", Color.parseColor("#68D391"),
+                LineChartView.Series("RSS", Color.parseColor("#68D391"),
                     cpuSeries.map { it.value.rssBytes / 1024f })
             ), yAxisMax = null)
             threadBar.setThreads(detail.threads, maxPercent = (detail.threads.maxOfOrNull { it.cpuPercent } ?: 100f))

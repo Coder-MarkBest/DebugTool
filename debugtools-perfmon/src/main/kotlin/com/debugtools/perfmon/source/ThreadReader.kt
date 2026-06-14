@@ -30,9 +30,11 @@ class ThreadReader(
         val totalJiffies = readTotalJiffies() ?: return emptyList()
 
         val results = ArrayList<ThreadInfo>(tidDirs.size)
+        val seenTids = HashSet<Int>(tidDirs.size)
         for (dir in tidDirs) {
             val tid = dir.name.toIntOrNull() ?: continue
             val stat = parseThreadStat(File(dir, "stat")) ?: continue
+            seenTids += tid
             val cpuPct = computeCpuPercent(pid, tid, stat.utime + stat.stime, totalJiffies)
             results += ThreadInfo(
                 tid = tid,
@@ -41,6 +43,8 @@ class ThreadReader(
                 state = stat.state
             )
         }
+        // Drop baselines for tids that disappeared since the last sample
+        baselines.keys.removeAll { it.first == pid && it.second !in seenTids }
         return results
     }
 
