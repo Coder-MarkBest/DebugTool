@@ -7,6 +7,10 @@ import java.io.File
  * /proc/<pid>/stat (utime+stime) and /proc/stat (total system jiffies) and
  * taking the delta against the previous successful read.
  *
+ * When /proc/stat is unreadable (SELinux denies non-system apps on Android 12+),
+ * falls back to a wall-clock denominator: CPU% = (jiffies_delta / USER_HZ) /
+ * wall_seconds_delta * 100. Result is still top-style (one fully-busy core = 100%).
+ *
  * Returns null until a second sample is available, or when the pid is missing.
  *
  * Not thread-safe — caller is expected to call from a single coroutine.
@@ -16,26 +20,43 @@ import java.io.File
  */
 class ProcStatReader(
     private val procRoot: File,
-    private val coreCount: Int = Runtime.getRuntime().availableProcessors()
+    private val coreCount: Int = Runtime.getRuntime().availableProcessors(),
+    private val clockNanos: () -> Long = System::nanoTime
 ) {
-    private data class Baseline(val processJiffies: Long, val totalJiffies: Long)
+    private data class Baseline(
+        val processJiffies: Long,
+        val totalJiffies: Long?,   // null when /proc/stat unavailable
+        val wallNanos: Long
+    )
 
     private val baselines = mutableMapOf<Int, Baseline>()
 
     fun read(pid: Int): Float? {
         val processJiffies = readProcessJiffies(pid) ?: return null
-        val totalJiffies = readTotalJiffies() ?: return null
+        val totalJiffies = readTotalJiffies()  // null on SELinux denial
+        val nowNanos = clockNanos()
 
         val prev = baselines[pid]
-        baselines[pid] = Baseline(processJiffies, totalJiffies)
+        baselines[pid] = Baseline(processJiffies, totalJiffies, nowNanos)
         if (prev == null) return null
 
         val processDelta = processJiffies - prev.processJiffies
-        val totalDelta = totalJiffies - prev.totalJiffies
-        if (totalDelta <= 0L) return null
 
-        val fraction = processDelta.toFloat() / totalDelta.toFloat()
-        return fraction * 100f * coreCount
+        // Prefer /proc/stat denominator when both samples have it; otherwise fall
+        // back to wall clock (works without the SELinux proc_stat permission).
+        return if (totalJiffies != null && prev.totalJiffies != null) {
+            val totalDelta = totalJiffies - prev.totalJiffies
+            if (totalDelta <= 0L) null
+            else (processDelta.toFloat() / totalDelta.toFloat()) * 100f * coreCount
+        } else {
+            val wallNanosDelta = nowNanos - prev.wallNanos
+            if (wallNanosDelta <= 0L) null
+            else {
+                val processSeconds = processDelta.toFloat() / USER_HZ
+                val wallSeconds = wallNanosDelta / 1_000_000_000f
+                (processSeconds / wallSeconds) * 100f
+            }
+        }
     }
 
     /** Drops the baseline so this pid is re-baselined on next read (e.g. after restart). */
@@ -65,8 +86,9 @@ class ProcStatReader(
 
     private fun readTotalJiffies(): Long? {
         return try {
+            // Avoid File.exists() — under SELinux denial it returns false but throws
+            // a SecurityException on read, both of which the catch below handles.
             val statFile = File(procRoot, "stat")
-            if (!statFile.exists()) return null
             // first line: cpu  user nice system idle iowait irq softirq steal guest guest_nice
             val firstLine = statFile.bufferedReader().use { it.readLine() } ?: return null
             firstLine.trim().split(Regex("\\s+"))
@@ -76,5 +98,10 @@ class ProcStatReader(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private companion object {
+        // sysconf(_SC_CLK_TCK); Android kernels are built with CONFIG_HZ=100.
+        const val USER_HZ = 100L
     }
 }

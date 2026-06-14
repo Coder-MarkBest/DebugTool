@@ -63,4 +63,23 @@ class ProcStatReaderTest {
         val pct = reader.read(100)
         assertEquals(200f, pct!!, 0.5f)
     }
+
+    @Test fun `falls back to wall clock when proc stat is unreadable`() {
+        // Simulate Android non-system app: /proc/stat denied by SELinux → readTotalJiffies returns null.
+        // Reader must fall back to wall-clock denominator instead of returning null.
+        var nowNanos = 1_000_000_000L
+        val reader = ProcStatReader(tmp.root, coreCount = 4, clockNanos = { nowNanos })
+
+        // No writeProcStat() — /proc/stat absent simulates SELinux denial.
+        writePidStat(pid = 100, utime = 0, stime = 0)
+        assertNull(reader.read(100))  // first sample primes baseline
+
+        // Advance wall clock 1.0s; process accumulated 100 jiffies (1.0s @ USER_HZ=100)
+        // → one full core busy for the whole second → 100%.
+        nowNanos += 1_000_000_000L
+        writePidStat(pid = 100, utime = 60, stime = 40)
+        val pct = reader.read(100)
+        assertNotNull("expected non-null fallback CPU%", pct)
+        assertEquals(100f, pct!!, 1f)
+    }
 }

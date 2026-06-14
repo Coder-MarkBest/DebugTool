@@ -12,9 +12,14 @@ import java.io.File
  */
 class ThreadReader(
     private val procRoot: File,
-    private val coreCount: Int = Runtime.getRuntime().availableProcessors()
+    private val coreCount: Int = Runtime.getRuntime().availableProcessors(),
+    private val clockNanos: () -> Long = System::nanoTime
 ) {
-    private data class TidBaseline(val tidJiffies: Long, val totalJiffies: Long)
+    private data class TidBaseline(
+        val tidJiffies: Long,
+        val totalJiffies: Long?,   // null when /proc/stat unavailable (SELinux)
+        val wallNanos: Long
+    )
     private val baselines = mutableMapOf<Pair<Int, Int>, TidBaseline>()
 
     /** Cheap path: just the number of task entries. */
@@ -27,7 +32,8 @@ class ThreadReader(
     fun readDetailed(pid: Int): List<ThreadInfo> {
         val taskDir = File(procRoot, "$pid/task")
         val tidDirs = taskDir.listFiles { f -> f.isDirectory } ?: return emptyList()
-        val totalJiffies = readTotalJiffies() ?: return emptyList()
+        val totalJiffies = readTotalJiffies()  // null on SELinux denial; fallback below
+        val nowNanos = clockNanos()
 
         val results = ArrayList<ThreadInfo>(tidDirs.size)
         val seenTids = HashSet<Int>(tidDirs.size)
@@ -35,7 +41,7 @@ class ThreadReader(
             val tid = dir.name.toIntOrNull() ?: continue
             val stat = parseThreadStat(File(dir, "stat")) ?: continue
             seenTids += tid
-            val cpuPct = computeCpuPercent(pid, tid, stat.utime + stat.stime, totalJiffies)
+            val cpuPct = computeCpuPercent(pid, tid, stat.utime + stat.stime, totalJiffies, nowNanos)
             results += ThreadInfo(
                 tid = tid,
                 name = stat.comm,
@@ -74,7 +80,6 @@ class ThreadReader(
     private fun readTotalJiffies(): Long? {
         return try {
             val statFile = File(procRoot, "stat")
-            if (!statFile.exists()) return null
             val firstLine = statFile.bufferedReader().use { it.readLine() } ?: return null
             firstLine.trim().split(Regex("\\s+"))
                 .drop(1).take(10).sumOf { it.toLong() }
@@ -83,14 +88,35 @@ class ThreadReader(
         }
     }
 
-    private fun computeCpuPercent(pid: Int, tid: Int, tidJiffies: Long, totalJiffies: Long): Float {
+    private fun computeCpuPercent(
+        pid: Int,
+        tid: Int,
+        tidJiffies: Long,
+        totalJiffies: Long?,
+        nowNanos: Long
+    ): Float {
         val key = pid to tid
         val prev = baselines[key]
-        baselines[key] = TidBaseline(tidJiffies, totalJiffies)
+        baselines[key] = TidBaseline(tidJiffies, totalJiffies, nowNanos)
         if (prev == null) return 0f
         val tidDelta = tidJiffies - prev.tidJiffies
-        val totalDelta = totalJiffies - prev.totalJiffies
-        if (totalDelta <= 0L) return 0f
-        return (tidDelta.toFloat() / totalDelta.toFloat()) * 100f * coreCount
+
+        return if (totalJiffies != null && prev.totalJiffies != null) {
+            val totalDelta = totalJiffies - prev.totalJiffies
+            if (totalDelta <= 0L) 0f
+            else (tidDelta.toFloat() / totalDelta.toFloat()) * 100f * coreCount
+        } else {
+            val wallNanosDelta = nowNanos - prev.wallNanos
+            if (wallNanosDelta <= 0L) 0f
+            else {
+                val tidSeconds = tidDelta.toFloat() / USER_HZ
+                val wallSeconds = wallNanosDelta / 1_000_000_000f
+                (tidSeconds / wallSeconds) * 100f
+            }
+        }
+    }
+
+    private companion object {
+        const val USER_HZ = 100L
     }
 }
