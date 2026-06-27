@@ -2,6 +2,7 @@ package com.debugtools.audiomon.audio
 
 import kotlin.math.abs
 import kotlin.math.log10
+import kotlin.math.sqrt
 
 /**
  * Streaming numerical-feature accumulator for a single PCM16 mono stream.
@@ -20,7 +21,7 @@ class AudioFeatureExtractor(
 ) {
     companion object {
         const val BAND_COUNT = 8
-        private const val MIN_DB = -90f
+        private const val MIN_DB = -90f // amplitude dBFS floor (wider than FftProcessor's display range)
         private fun ampToDb(amp: Float): Float =
             if (amp <= 1e-7f) MIN_DB else (20f * log10(amp)).coerceAtLeast(MIN_DB)
     }
@@ -34,8 +35,8 @@ class AudioFeatureExtractor(
 
     private var silentFrames = 0
     private var activeFrames = 0
-    private val rmsSeries = ArrayList<Float>()
-    private val dbSeries = ArrayList<Float>()
+    private val rmsSeries = mutableListOf<Float>()
+    private val dbSeries = mutableListOf<Float>()
 
     private val halfSize = fftSize / 2
     private val magAccum = DoubleArray(halfSize)
@@ -73,7 +74,7 @@ class AudioFeatureExtractor(
     }
 
     fun build(): AudioFeatures {
-        val avgRms = if (sampleCount > 0) kotlin.math.sqrt(sumSquares / sampleCount).toFloat() else 0f
+        val avgRms = if (sampleCount > 0) sqrt(sumSquares / sampleCount).toFloat() else 0f
         val avgDb = ampToDb(avgRms)
         val peakDb = ampToDb(peakAmplitude)
         val durationMs = if (sampleRate > 0) sampleCount * 1000 / sampleRate else 0L

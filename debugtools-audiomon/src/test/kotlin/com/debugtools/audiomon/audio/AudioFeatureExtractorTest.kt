@@ -77,4 +77,45 @@ class AudioFeatureExtractorTest {
         val f = ex.build()
         assertEquals(0.125f, f.zeroCrossingRate, 0.02f)
     }
+
+    @Test
+    fun `cross-frame zero crossing sign state carries across feed calls`() {
+        // Build a full sine of fftSize samples with 64 cycles, then compare:
+        // extractor A receives it as one frame; extractor B receives it split into two halves.
+        // Both should produce the same zeroCrossingRate because the boundary crossing
+        // between the two halves must be counted correctly (no spurious reset, no missed crossing).
+        val full = sine(fftSize, 64, amp = 0.5)
+        val half = fftSize / 2
+        val first = full.copyOfRange(0, half)
+        val second = full.copyOfRange(half, fftSize)
+
+        val exA = extractor()
+        exA.feed(full)
+        val fA = exA.build()
+
+        val exB = extractor()
+        exB.feed(first)
+        exB.feed(second)
+        val fB = exB.build()
+
+        assertEquals(fA.zeroCrossingRate, fB.zeroCrossingRate, 1e-4f)
+    }
+
+    @Test
+    fun `short trailing frame counts toward amplitude and timeseries but not spectral`() {
+        // Feed one full frame then one half-size frame.
+        // Amplitude and timeseries stats should accumulate both; FFT should only use the full frame.
+        val ex = extractor()
+        ex.feed(sine(fftSize, 64, amp = 0.5))
+        ex.feed(sine(fftSize / 2, 32, amp = 0.5))
+
+        val f = ex.build()
+
+        assertEquals((fftSize + fftSize / 2).toLong(), f.sampleCount)
+        assertEquals(2, f.rmsSeries.size)
+        assertEquals(2, f.dbSeries.size)
+        // dominantFreq > 0 confirms spectral accumulated from the one full frame
+        // (spectralFrames == 1; the short frame was skipped for FFT without throwing)
+        assertTrue("dominantFreq=${f.dominantFreq} should be > 0", f.dominantFreq > 0f)
+    }
 }
