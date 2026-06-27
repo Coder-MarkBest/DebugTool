@@ -21,6 +21,11 @@ import kotlin.random.Random
  * writer/extractor are created lazily on the first frame. All public methods
  * are synchronized to guard the lazily-created stream-A state across threads.
  *
+ * Note: [feedStreamB], [feedStreamA], and [finish] perform disk writes while
+ * holding the monitor lock — an accepted tradeoff for a debug tool (the host
+ * audio thread may briefly block). A production-grade version would offload
+ * writes to a dedicated IO queue.
+ *
  * [clock] and [sessionIdProvider] are injectable for deterministic tests.
  */
 class RecordingSessionController(
@@ -32,11 +37,10 @@ class RecordingSessionController(
     private val sessionIdProvider: () -> String = { defaultSessionId() }
 ) {
     companion object {
-        private val ID_DATE_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         private const val SUFFIX_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
 
         private fun defaultSessionId(): String {
-            val ts = ID_DATE_FORMAT.format(Date())
+            val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val suffix = (1..4).map { SUFFIX_CHARS[Random.nextInt(SUFFIX_CHARS.length)] }.joinToString("")
             return "${ts}_$suffix"
         }
@@ -55,13 +59,15 @@ class RecordingSessionController(
 
     @Synchronized
     fun start() {
+        if (sessionId != null) abort()   // defensively finalize a leaked prior session
         val id = sessionIdProvider()
         val dir = File(rootDir, id).apply { mkdirs() }
         sessionId = id
         sessionDir = dir
         startTime = clock()
 
-        bWriter = WavFileWriter(File(dir, "streamB.wav"), sampleRate).also { it.open() }
+        val w = WavFileWriter(File(dir, "streamB.wav"), sampleRate)
+        bWriter = if (w.open().isSuccess) w else null
         bExtractor = newExtractor()
     }
 
@@ -74,9 +80,14 @@ class RecordingSessionController(
     @Synchronized
     fun feedStreamA(frame: ShortArray) {
         val dir = sessionDir ?: return
-        if (aWriter == null) {
-            aWriter = WavFileWriter(File(dir, "streamA.wav"), sampleRate).also { it.open() }
-            aExtractor = newExtractor()
+        if (aWriter == null && aExtractor == null) {
+            val w = WavFileWriter(File(dir, "streamA.wav"), sampleRate)
+            if (w.open().isSuccess) {
+                aWriter = w
+                aExtractor = newExtractor()
+            } else {
+                return  // could not open stream A this session; skip
+            }
         }
         aWriter?.writeSamples(frame)
         aExtractor?.feed(frame)
@@ -113,6 +124,12 @@ class RecordingSessionController(
 
         reset()
         return report
+    }
+
+    private fun abort() {
+        bWriter?.close()
+        aWriter?.close()
+        reset()
     }
 
     private fun newExtractor() =
@@ -164,7 +181,9 @@ class RecordingSessionController(
     private fun reset() {
         sessionId = null
         sessionDir = null
-        bWriter = null; bExtractor = null
-        aWriter = null; aExtractor = null
+        bWriter = null
+        bExtractor = null
+        aWriter = null
+        aExtractor = null
     }
 }

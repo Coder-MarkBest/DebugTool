@@ -80,4 +80,32 @@ class RecordingSessionControllerTest {
         val streams = JSONObject(report.metadata.readText()).getJSONObject("streams")
         assertFalse(streams.getJSONObject("streamA").getBoolean("present"))
     }
+
+    @Test
+    fun `double start finalizes prior session and starts fresh`() {
+        val c = controller(tmp.root)
+        c.start()
+        repeat(2) { c.feedStreamB(sine(fftSize, 64, 0.5)) }
+        c.start()   // restart without finish — must not crash or leak
+        repeat(2) { c.feedStreamB(sine(fftSize, 64, 0.5)) }
+        val report = c.finish()
+        assertNotNull(report)
+        assertTrue(report!!.streamBWav!!.exists())
+    }
+
+    @Test
+    fun `session json durationMs reflects clock delta`() {
+        var t = 1_000L
+        val c = RecordingSessionController(
+            rootDir = tmp.root, sampleRate = sampleRate, fftSize = fftSize,
+            silenceThresholdDb = -50f,
+            clock = { t += 5_000L; t },           // start -> 6000, finish -> 11000
+            sessionIdProvider = { "dur" }
+        )
+        c.start()
+        c.feedStreamB(sine(fftSize, 64, 0.5))
+        val report = c.finish()!!
+        val json = org.json.JSONObject(report.metadata.readText())
+        assertEquals(5_000L, json.getLong("durationMs"))
+    }
 }
