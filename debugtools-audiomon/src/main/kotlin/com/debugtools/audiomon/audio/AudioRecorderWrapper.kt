@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -32,6 +33,7 @@ class AudioRecorderWrapper(
     companion object {
         const val DEFAULT_SAMPLE_RATE = 16000
         const val DEFAULT_FFT_SIZE = 1024
+        private const val TAG = "AudioRecorderWrapper"
     }
 
     private val _audioStream = MutableSharedFlow<ShortArray>(
@@ -77,9 +79,19 @@ class AudioRecorderWrapper(
             val buffer = ShortArray(fftSize)
             while (currentCoroutineContext().isActive) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: break
-                if (read > 0) {
-                    val frame = if (read == buffer.size) buffer.copyOf() else buffer.copyOf(read)
-                    _audioStream.tryEmit(frame)
+                when {
+                    read > 0 -> {
+                        val frame = if (read == buffer.size) buffer.copyOf() else buffer.copyOf(read)
+                        _audioStream.tryEmit(frame)
+                    }
+                    // Negative return codes are AudioRecord errors (ERROR_INVALID_OPERATION,
+                    // ERROR_DEAD_OBJECT, etc.). Don't busy-spin — log and stop the read loop so
+                    // the failure surfaces instead of silently freezing the recording.
+                    read < 0 -> {
+                        Log.e(TAG, "AudioRecord.read() error code=$read; stopping capture")
+                        break
+                    }
+                    // read == 0: no data this cycle (e.g. mic muted by background policy); keep polling.
                 }
             }
         }

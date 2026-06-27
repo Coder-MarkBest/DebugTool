@@ -1,5 +1,6 @@
 package com.debugtools.audiomon.presenter
 
+import android.util.Log
 import com.debugtools.audiomon.audio.AudioRecorderWrapper
 import com.debugtools.audiomon.audio.FftProcessor
 import com.debugtools.audiomon.report.AudioReportData
@@ -27,6 +28,10 @@ class AudioPresenter(
     private val autoReport: Boolean = false,
     private val reporter: AudioReporter? = null
 ) {
+    private companion object {
+        const val TAG = "AudioPresenter"
+    }
+
     private var view: AudioView? = null
     private var recorder: AudioRecorderWrapper? = null
     // Written on the main thread (start/stop), read on the host audio thread (feedProcessedAudio).
@@ -85,9 +90,19 @@ class AudioPresenter(
         v.showMonitoringState(true)
         v.showStatus("🎙️ 录制中 (${sampleRate}Hz)\n会话: ${ctrl.currentSessionDir?.name}")
 
-        recordJob = scope.launch {
-            rec.audioStream.collect { pcmBuffer ->
-                controller?.feedStreamB(pcmBuffer)
+        // Disk writes are blocking IO — run on Dispatchers.IO, NOT Default (whose small
+        // CPU-bound pool would starve under per-frame FileOutputStream.write, freezing the UI).
+        recordJob = scope.launch(Dispatchers.IO) {
+            try {
+                rec.audioStream.collect { pcmBuffer ->
+                    controller?.feedStreamB(pcmBuffer)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A transient write/extract error must not crash the app or silently kill recording.
+                Log.e(TAG, "stream B recording loop failed", e)
+                withContext(Dispatchers.Main) { view?.showStatus("❌ 录制中断: ${e.message}") }
             }
         }
 
