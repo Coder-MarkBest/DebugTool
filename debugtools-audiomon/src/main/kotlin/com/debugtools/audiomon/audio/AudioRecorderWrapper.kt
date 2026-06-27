@@ -9,36 +9,29 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * Wraps [AudioRecord] to emit PCM16 buffers as a hot [SharedFlow],
- * with optional WAV file recording.
+ * Wraps [AudioRecord] to emit PCM16 buffers as a hot [SharedFlow].
  *
  * Backpressure is handled via [BufferOverflow.DROP_OLDEST] — the audio thread
  * never blocks; stale frames are simply discarded when the consumer can't keep up.
  *
+ * WAV persistence is intentionally not handled here: callers that need to record
+ * to disk consume [audioStream] and write the frames themselves (see
+ * `RecordingSessionController`).
+ *
  * @param sampleRate Audio sample rate in Hz.
  * @param fftSize FFT window size (number of samples per read).
- * @param saveDir Directory for WAV files. Null = no file recording.
- * @param saveEnabled Whether file recording is active.
  */
 @SuppressLint("MissingPermission")
 class AudioRecorderWrapper(
     private val sampleRate: Int = DEFAULT_SAMPLE_RATE,
-    private val fftSize: Int = DEFAULT_FFT_SIZE,
-    private val saveDir: File? = null,
-    private val saveEnabled: Boolean = false
+    private val fftSize: Int = DEFAULT_FFT_SIZE
 ) {
 
     companion object {
         const val DEFAULT_SAMPLE_RATE = 16000
         const val DEFAULT_FFT_SIZE = 1024
-
-        private val FILE_DATE_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
     }
 
     private val _audioStream = MutableSharedFlow<ShortArray>(
@@ -51,10 +44,6 @@ class AudioRecorderWrapper(
     private var audioRecord: AudioRecord? = null
     private var readJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var wavWriter: WavFileWriter? = null
-
-    /** The file currently being written to, or null. */
-    val currentFile: File? get() = wavWriter?.targetFile
 
     /**
      * Initialize and start recording.
@@ -84,18 +73,6 @@ class AudioRecorderWrapper(
             record.startRecording()
         }
 
-        // Start WAV writer if save is enabled
-        if (saveEnabled && saveDir != null) {
-            val fileName = "audiomon_${FILE_DATE_FORMAT.format(Date())}.wav"
-            val file = File(saveDir, fileName)
-            wavWriter = WavFileWriter(file, sampleRate).also { writer ->
-                val result = writer.open()
-                if (result.isFailure) {
-                    wavWriter = null // don't fail the whole recording, just skip saving
-                }
-            }
-        }
-
         readJob = scope.launch {
             val buffer = ShortArray(fftSize)
             while (currentCoroutineContext().isActive) {
@@ -103,28 +80,20 @@ class AudioRecorderWrapper(
                 if (read > 0) {
                     val frame = if (read == buffer.size) buffer.copyOf() else buffer.copyOf(read)
                     _audioStream.tryEmit(frame)
-                    wavWriter?.writeSamples(frame)
                 }
             }
         }
     }.onFailure { stop() }
 
-    fun stop(): File? {
+    fun stop() {
         readJob?.cancel()
         readJob = null
-
-        // Close WAV writer and get the saved file
-        val savedFile = wavWriter?.targetFile
-        wavWriter?.close()
-        wavWriter = null
 
         try {
             audioRecord?.stop()
         } catch (_: IllegalStateException) { /* already stopped */ }
         audioRecord?.release()
         audioRecord = null
-
-        return savedFile
     }
 
     fun destroy() {
