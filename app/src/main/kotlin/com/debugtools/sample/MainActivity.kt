@@ -1,6 +1,8 @@
 package com.debugtools.sample
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -11,7 +13,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.debugtools.audiomon.AudioMonitorModule
 import com.debugtools.core.DebugTools
 import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
@@ -33,9 +38,14 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val REQ_RECORD_AUDIO = 1002
+    }
+
     private val timelineModule = TimelineModule.create(maxSize = 200)
     private val voiceModule = VoiceAssistantModule()
     private val captureModule = NetworkCaptureModule.create()
+    private val audioModule = AudioMonitorModule()
     private val perfModule by lazy {
         PerfMonitorModule.builder()
             .addProcessByName(packageName)
@@ -100,6 +110,11 @@ class MainActivity : AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "① 授权悬浮窗权限"
             setOnClickListener { requestOverlayPermission() }
+        })
+
+        root.addView(Button(this).apply {
+            text = "①b 授权录音权限"
+            setOnClickListener { requestAudioPermission() }
         })
 
         btnInit = Button(this).apply {
@@ -167,6 +182,33 @@ class MainActivity : AppCompatActivity() {
         ))
     }
 
+    private fun requestAudioPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            toast("录音权限已授予")
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            REQ_RECORD_AUDIO
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_RECORD_AUDIO) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                toast("录音权限已授予")
+            } else {
+                toast("录音权限被拒绝，音频监控模块将无法工作")
+            }
+        }
+    }
+
     private fun initDebugTools() {
         if (debugToolsInitialized) { toast("已初始化"); return }
         try {
@@ -178,6 +220,7 @@ class MainActivity : AppCompatActivity() {
                 .register(voiceModule)
                 .register(NetworkModule.create("8.8.8.8"))
                 .register(timelineModule)
+                .register(audioModule)
                 .register(
                     GeneralModule.builder(this)
                         .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
@@ -199,7 +242,7 @@ class MainActivity : AppCompatActivity() {
             btnSendWs.isEnabled = true
             btnCrash.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用")
+            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }
