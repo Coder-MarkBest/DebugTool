@@ -25,7 +25,9 @@ import com.debugtools.network.NetworkModule
 import com.debugtools.okhttp.NetworkCaptureModule
 import com.debugtools.perfmon.PerfMonitorModule
 import com.debugtools.timeline.TimelineModule
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -56,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var captureClient: OkHttpClient
     private var sampleWs: WebSocket? = null
     private var mockEventJob: Job? = null
+    private var processedAudioJob: Job? = null
     private var debugToolsInitialized = false
     private var mockIndex = 0
 
@@ -65,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSendHttp: Button
     private lateinit var btnSendWs: Button
     private lateinit var btnCrash: Button
+    private lateinit var btnFeedAudio: Button
     private lateinit var logView: TextView
 
     // 模拟语音助手的一次完整对话流程
@@ -159,6 +163,13 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(btnCrash)
 
+        btnFeedAudio = Button(this).apply {
+            text = "🎙️ 模拟推送处理后音频（Stream A）"
+            isEnabled = false
+            setOnClickListener { toggleProcessedAudio() }
+        }
+        root.addView(btnFeedAudio)
+
         logView = TextView(this).apply {
             text = "--- 日志 ---"
             textSize = 11f
@@ -241,6 +252,7 @@ class MainActivity : AppCompatActivity() {
             btnSendHttp.isEnabled = true
             btnSendWs.isEnabled = true
             btnCrash.isEnabled = true
+            btnFeedAudio.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控")
         } catch (e: Exception) {
@@ -288,6 +300,39 @@ class MainActivity : AppCompatActivity() {
             }
             appendLog("--- 一轮对话完成 ---")
             btnStartFlow.text = "▶ 自动模拟完整对话流程"
+        }
+    }
+
+    /**
+     * 模拟「语音助手处理后」的音频（Stream A）：生成 PCM16 单声道正弦帧并通过
+     * [AudioMonitorModule.feedProcessedAudio] 推给 SDK。非录制期推流会被安全忽略，
+     * 因此请在「音频监控」页点「开始录制」后，会话目录里才会出现 streamA.wav。
+     */
+    private fun toggleProcessedAudio() {
+        if (processedAudioJob?.isActive == true) {
+            processedAudioJob?.cancel()
+            processedAudioJob = null
+            btnFeedAudio.text = "🎙️ 模拟推送处理后音频（Stream A）"
+            appendLog("⏹ 停止推送 Stream A")
+            return
+        }
+        btnFeedAudio.text = "⏹ 停止推送处理后音频"
+        appendLog("▶ 推送 Stream A 中（录制时才落盘为 streamA.wav）")
+        processedAudioJob = lifecycleScope.launch(Dispatchers.Default) {
+            val sampleRate = 16000
+            val frameSize = 1024
+            val frameDurationMs = frameSize * 1000L / sampleRate // ~64ms，real-time 节奏
+            val twoPiF = 2.0 * Math.PI * 440.0 / sampleRate       // 440Hz 正弦
+            var phase = 0.0
+            while (isActive) {
+                val frame = ShortArray(frameSize) {
+                    val sample = (Math.sin(phase) * 0.3 * Short.MAX_VALUE).toInt().toShort()
+                    phase += twoPiF
+                    sample
+                }
+                audioModule.feedProcessedAudio(frame)
+                delay(frameDurationMs)
+            }
         }
     }
 
