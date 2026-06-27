@@ -42,6 +42,7 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
         gravity = Gravity.CENTER
         alpha = 0.4f                 // disabled until a session is reportable
         isClickable = false
+        isFocusable = false
         setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
         val bg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
@@ -161,7 +162,7 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
         toggleListener = listener
     }
 
-    fun setReportListener(listener: () -> Unit) {
+    override fun setReportListener(listener: () -> Unit) {
         reportListener = listener
     }
 
@@ -170,5 +171,6 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
             if (!reporterConfigured) "\n(未配置上报接口)" else ""
         reportBtn.alpha = if (reporterConfigured) 1f else 0.4f
         reportBtn.isClickable = reporterConfigured
+        reportBtn.isFocusable = reporterConfigured
     }
 }

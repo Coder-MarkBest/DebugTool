@@ -31,7 +31,14 @@ class AudioPresenter(
     private var recorder: AudioRecorderWrapper? = null
     private var controller: RecordingSessionController? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private var collectJob: Job? = null
+
+    // Fire-and-forget scope for auto/manual reports. NOT cancelled in detach() so that a
+    // report triggered right before the panel closes still completes. After detach, `view`
+    // is null so the Main-thread status post is a safe no-op.
+    private val reportScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private var recordJob: Job? = null
+    private var uiJob: Job? = null
     private var isRecording = false
     private var lastSession: AudioReportData? = null
 
@@ -55,7 +62,7 @@ class AudioPresenter(
 
     fun startRecording() {
         val v = view ?: return
-        if (collectJob?.isActive == true) return
+        if (recordJob?.isActive == true) return
 
         val ctrl = RecordingSessionController(rootDir, sampleRate, fftSize, silenceThresholdDb)
         ctrl.start()
@@ -76,12 +83,16 @@ class AudioPresenter(
         v.showMonitoringState(true)
         v.showStatus("🎙️ 录制中 (${sampleRate}Hz)\n会话: ${ctrl.currentSessionDir?.name}")
 
-        collectJob = scope.launch {
-            rec.audioStream
-                .sample(60) // ~16 FPS UI updates; controller still receives every frame
-                .collect { pcmBuffer ->
-                    controller?.feedStreamB(pcmBuffer)
+        recordJob = scope.launch {
+            rec.audioStream.collect { pcmBuffer ->
+                controller?.feedStreamB(pcmBuffer)
+            }
+        }
 
+        uiJob = scope.launch {
+            rec.audioStream
+                .sample(60) // throttle UI to ~16 FPS; recording uses the un-sampled stream above
+                .collect { pcmBuffer ->
                     val floatSamples = FloatArray(pcmBuffer.size) {
                         pcmBuffer[it].toFloat() / Short.MAX_VALUE
                     }
@@ -99,8 +110,10 @@ class AudioPresenter(
     }
 
     fun stopRecording() {
-        collectJob?.cancel()
-        collectJob = null
+        recordJob?.cancel()
+        uiJob?.cancel()
+        recordJob = null
+        uiJob = null
 
         recorder?.stop()
         recorder?.destroy()
@@ -137,7 +150,7 @@ class AudioPresenter(
     }
 
     private fun dispatchReport(report: AudioReportData) {
-        scope.launch(Dispatchers.IO) {
+        reportScope.launch {
             val ok = runCatching { reporter?.report(report) }.isSuccess
             withContext(Dispatchers.Main) {
                 view?.showStatus(if (ok) "📤 已上报: ${report.sessionId}" else "❌ 上报失败: ${report.sessionId}")

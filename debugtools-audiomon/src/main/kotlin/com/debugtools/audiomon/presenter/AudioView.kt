@@ -26,6 +26,9 @@ interface AudioView {
     /** Register callback for the start/stop toggle button. */
     fun setToggleListener(listener: () -> Unit)
 
+    /** Register callback for the report-last-session button. */
+    fun setReportListener(listener: () -> Unit)
+
     /** Show the most recent finished session; reporterConfigured gates the upload button. */
     fun showLastSession(sessionId: String, summary: String, reporterConfigured: Boolean)
 }
