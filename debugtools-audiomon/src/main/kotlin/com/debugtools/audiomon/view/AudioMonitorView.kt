@@ -26,6 +26,32 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
     private val statusText: TextView
     private val toggleBtn: TextView
     private var toggleListener: (() -> Unit)? = null
+    private var reportListener: (() -> Unit)? = null
+
+    private val lastSessionText = TextView(context).apply {
+        setTextColor(Color.parseColor("#A0AEC0"))
+        textSize = 12f
+        text = ""
+    }
+
+    private val reportBtn = TextView(context).apply {
+        text = "📤 上报最近会话"
+        setTextColor(Color.WHITE)
+        textSize = 13f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        alpha = 0.4f                 // disabled until a session is reportable
+        isClickable = false
+        setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
+        val bg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 8f * density
+            setColor(Color.parseColor("#2B6CB0"))
+            setStroke((1 * density).toInt(), Color.parseColor("#63B3ED"))
+        }
+        background = bg
+        setOnClickListener { reportListener?.invoke() }
+    }
 
     init {
         orientation = VERTICAL
@@ -33,7 +59,7 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
 
         // Start/Stop toggle button
         toggleBtn = TextView(context).apply {
-            text = "▶ 开始录音"
+            text = "▶ 开始录制"
             setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
@@ -74,6 +100,12 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
             )
         }
         addView(statusText, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        addView(lastSessionText, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+            setMargins((16 * density).toInt(), 0, (16 * density).toInt(), (4 * density).toInt())
+        })
+        addView(reportBtn, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+            setMargins((16 * density).toInt(), (4 * density).toInt(), (16 * density).toInt(), (12 * density).toInt())
+        })
     }
 
     private fun addSectionLabel(text: String) {
@@ -105,7 +137,7 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
 
     override fun showMonitoringState(isMonitoring: Boolean) {
         if (isMonitoring) {
-            toggleBtn.text = "⏹ 停止录音"
+            toggleBtn.text = "⏹ 结束录制"
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 8f * density
@@ -114,7 +146,7 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
             }
             toggleBtn.background = bg
         } else {
-            toggleBtn.text = "▶ 开始录音"
+            toggleBtn.text = "▶ 开始录制"
             val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 8f * density
@@ -127,5 +159,16 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
 
     override fun setToggleListener(listener: () -> Unit) {
         toggleListener = listener
+    }
+
+    fun setReportListener(listener: () -> Unit) {
+        reportListener = listener
+    }
+
+    override fun showLastSession(sessionId: String, summary: String, reporterConfigured: Boolean) {
+        lastSessionText.text = "最近会话: $sessionId\n$summary" +
+            if (!reporterConfigured) "\n(未配置上报接口)" else ""
+        reportBtn.alpha = if (reporterConfigured) 1f else 0.4f
+        reportBtn.isClickable = reporterConfigured
     }
 }
