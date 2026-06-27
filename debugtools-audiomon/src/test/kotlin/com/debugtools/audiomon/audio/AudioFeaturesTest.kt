@@ -2,7 +2,7 @@ package com.debugtools.audiomon.audio
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class AudioFeaturesTest {
@@ -30,6 +30,7 @@ class AudioFeaturesTest {
         assertEquals(1000L, json.getLong("durationMs"))
         assertEquals(440.0, json.getDouble("dominantFreq"), 1e-3)
         assertEquals(8, json.getJSONArray("bandEnergy").length())
+        assertEquals(0.1, json.getJSONArray("bandEnergy").getDouble(0), 1e-3)
         assertEquals(3, json.getJSONArray("rmsSeries").length())
         assertEquals(0.7, json.getDouble("activeRatio"), 1e-3)
     }
@@ -41,6 +42,7 @@ class AudioFeaturesTest {
         assertEquals(-12.0, s.getDouble("avgDb"), 1e-3)
         assertEquals(-0.9, s.getDouble("peakDb"), 1e-3)
         assertEquals(0.7, s.getDouble("activeRatio"), 1e-3)
-        assertTrue(!s.has("rmsSeries"))
+        assertEquals(4, s.length())
+        assertFalse(s.has("rmsSeries"))
     }
 }

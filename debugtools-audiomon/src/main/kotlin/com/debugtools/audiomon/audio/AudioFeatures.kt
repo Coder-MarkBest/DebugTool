@@ -33,15 +33,15 @@ data class AudioFeatures(
     fun toJson(): JSONObject = JSONObject().apply {
         put("durationMs", durationMs)
         put("sampleCount", sampleCount)
-        put("avgRms", avgRms.toDouble())
-        put("peakAmplitude", peakAmplitude.toDouble())
-        put("avgDb", avgDb.toDouble())
-        put("peakDb", peakDb.toDouble())
-        put("zeroCrossingRate", zeroCrossingRate.toDouble())
-        put("silenceRatio", silenceRatio.toDouble())
-        put("activeRatio", activeRatio.toDouble())
-        put("dominantFreq", dominantFreq.toDouble())
-        put("spectralCentroid", spectralCentroid.toDouble())
+        put("avgRms", avgRms.toJsonDouble())
+        put("peakAmplitude", peakAmplitude.toJsonDouble())
+        put("avgDb", avgDb.toJsonDouble())
+        put("peakDb", peakDb.toJsonDouble())
+        put("zeroCrossingRate", zeroCrossingRate.toJsonDouble())
+        put("silenceRatio", silenceRatio.toJsonDouble())
+        put("activeRatio", activeRatio.toJsonDouble())
+        put("dominantFreq", dominantFreq.toJsonDouble())
+        put("spectralCentroid", spectralCentroid.toJsonDouble())
         put("bandEnergy", bandEnergy.toJsonArray())
         put("rmsSeries", rmsSeries.toJsonArray())
         put("dbSeries", dbSeries.toJsonArray())
@@ -49,14 +49,16 @@ data class AudioFeatures(
 
     fun summaryJson(): JSONObject = JSONObject().apply {
         put("durationMs", durationMs)
-        put("avgDb", avgDb.toDouble())
-        put("peakDb", peakDb.toDouble())
-        put("activeRatio", activeRatio.toDouble())
+        put("avgDb", avgDb.toJsonDouble())
+        put("peakDb", peakDb.toJsonDouble())
+        put("activeRatio", activeRatio.toJsonDouble())
     }
+
+    private fun Float.toJsonDouble(): Double = Math.round(this.toDouble() * 100000.0) / 100000.0
 
     private fun FloatArray.toJsonArray(): JSONArray {
         val arr = JSONArray()
-        for (v in this) arr.put(v.toDouble())
+        for (v in this) arr.put(v.toJsonDouble())
         return arr
     }
 
