@@ -29,7 +29,8 @@ class AudioPresenter(
 ) {
     private var view: AudioView? = null
     private var recorder: AudioRecorderWrapper? = null
-    private var controller: RecordingSessionController? = null
+    // Written on the main thread (start/stop), read on the host audio thread (feedProcessedAudio).
+    @Volatile private var controller: RecordingSessionController? = null
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     // Fire-and-forget scope for auto/manual reports. NOT cancelled in detach() so that a
@@ -68,7 +69,8 @@ class AudioPresenter(
         ctrl.start()
         controller = ctrl
 
-        val rec = AudioRecorderWrapper(sampleRate, fftSize, saveDir = null, saveEnabled = false)
+        // WAV writing is delegated to RecordingSessionController; the wrapper only captures the mic.
+        val rec = AudioRecorderWrapper(sampleRate, fftSize)
         recorder = rec
         val result = rec.start()
         if (result.isFailure) {
