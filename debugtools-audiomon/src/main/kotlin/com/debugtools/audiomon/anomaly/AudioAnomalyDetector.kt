@@ -15,7 +15,9 @@ class AudioAnomalyDetector(
 ) {
     private companion object {
         const val CLIP_THRESHOLD = 0.99f
-        const val JUMP_DB = 15f
+        // Frame-to-frame dB delta that counts as a jump. Set above normal speech
+        // dynamics (onset/syllables swing ~15-20dB) so only abnormal bursts flag.
+        const val JUMP_DB = 25f
         const val NOISE_FLOOR_DB = -60f
         const val MIN_SILENCE_MS = 1000L
         const val MIN_NOISE_MS = 500L
@@ -50,10 +52,14 @@ class AudioAnomalyDetector(
             clipOpen = false
         }
 
-        // 2) energy jump (debounced — one per transition)
+        // 2) energy jump (debounced — one per transition). Only counts WITHIN active
+        //    audio (both frames above the silence floor), so normal speech onsets/
+        //    offsets and the -90dB silence floor bouncing don't get flagged — those
+        //    boundaries are the silence rule's job, not an anomaly.
         prevDb?.let { pd ->
+            val active = pd >= silenceThresholdDb && db >= silenceThresholdDb
             val delta = db - pd
-            if (abs(delta) > JUMP_DB) {
+            if (active && abs(delta) > JUMP_DB) {
                 if (!jumpArmed) {
                     val sign = if (delta > 0) "+" else ""
                     events += AnomalyEvent(stream, timeMs, AnomalyType.ENERGY_JUMP,

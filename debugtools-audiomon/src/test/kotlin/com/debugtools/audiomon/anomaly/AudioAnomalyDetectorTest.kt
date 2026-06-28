@@ -36,6 +36,36 @@ class AudioAnomalyDetectorTest {
     }
 
     @Test
+    fun `silence to speech onset is not an energy jump`() {
+        // -90dB digital silence floor -> -20dB speech: a normal onset, must NOT flag.
+        val d = detector()
+        val out = mutableListOf<AnomalyEvent>()
+        out += d.onFrame(0, 0.0f, -90f)
+        out += d.onFrame(64, 0.1f, -20f)
+        assertTrue(out.none { it.type == AnomalyType.ENERGY_JUMP })
+    }
+
+    @Test
+    fun `normal speech onset from background is not an energy jump`() {
+        // background ~-40dB -> speech ~-22dB (+18dB): within normal speech dynamics, must NOT flag.
+        val d = detector()
+        val out = mutableListOf<AnomalyEvent>()
+        out += d.onFrame(0, 0.1f, -40f)
+        out += d.onFrame(64, 0.1f, -22f)
+        assertTrue(out.none { it.type == AnomalyType.ENERGY_JUMP })
+    }
+
+    @Test
+    fun `large sudden jump within active audio is flagged`() {
+        // already talking at -30dB then a sudden burst to -2dB (+28dB), both active: real anomaly.
+        val d = detector()
+        val out = mutableListOf<AnomalyEvent>()
+        out += d.onFrame(0, 0.1f, -30f)
+        out += d.onFrame(64, 0.1f, -2f)
+        assertEquals(1, out.count { it.type == AnomalyType.ENERGY_JUMP })
+    }
+
+    @Test
     fun `sustained true silence over 1s is a dropout`() {
         val d = detector()
         val out = mutableListOf<AnomalyEvent>()
