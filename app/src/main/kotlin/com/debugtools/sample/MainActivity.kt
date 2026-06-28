@@ -17,6 +17,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.debugtools.audiomon.AudioMonitorModule
+import com.debugtools.startup.StartupMonitorModule
 import com.debugtools.core.DebugTools
 import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
@@ -232,6 +233,7 @@ class MainActivity : AppCompatActivity() {
                 .register(NetworkModule.create("8.8.8.8"))
                 .register(timelineModule)
                 .register(audioModule)
+                .register(StartupMonitorModule())
                 .register(
                     GeneralModule.builder(this)
                         .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
