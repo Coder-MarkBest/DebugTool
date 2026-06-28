@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private var sampleWs: WebSocket? = null
     private var mockEventJob: Job? = null
     private var processedAudioJob: Job? = null
+    private var trafficGen: SampleTrafficGenerator? = null
     private var debugToolsInitialized = false
     private var mockIndex = 0
 
@@ -69,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSendWs: Button
     private lateinit var btnCrash: Button
     private lateinit var btnFeedAudio: Button
+    private lateinit var btnGenTraffic: Button
     private lateinit var logView: TextView
 
     // 模拟语音助手的一次完整对话流程
@@ -155,6 +157,13 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { sendMockWebSocket() }
         }
         root.addView(btnSendWs)
+
+        btnGenTraffic = Button(this).apply {
+            text = "🌐 生成示例网络流量（本地，离线可用）"
+            isEnabled = false
+            setOnClickListener { generateSampleTraffic() }
+        }
+        root.addView(btnGenTraffic)
 
         btnCrash = Button(this).apply {
             text = "💥 模拟崩溃（测试 CrashInfo 上报）"
@@ -244,6 +253,9 @@ class MainActivity : AppCompatActivity() {
                 .addInterceptor(captureModule.httpInterceptor())
                 .eventListenerFactory(captureModule.eventListenerFactory())
                 .build()
+            trafficGen = SampleTrafficGenerator(captureClient, captureModule) { msg ->
+                runOnUiThread { appendLog(msg) }
+            }
 
             debugToolsInitialized = true
             btnInit.isEnabled = false
@@ -253,6 +265,7 @@ class MainActivity : AppCompatActivity() {
             btnSendWs.isEnabled = true
             btnCrash.isEnabled = true
             btnFeedAudio.isEnabled = true
+            btnGenTraffic.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控")
         } catch (e: Exception) {
@@ -392,6 +405,17 @@ class MainActivity : AppCompatActivity() {
             delay(1000)
             throw RuntimeException("模拟崩溃：ASR 引擎内部 NullPointerException at AudioProcessor.process()")
         }
+    }
+
+    /** Fire a batch of varied HTTP + a WebSocket against a local MockWebServer (offline-safe). */
+    private fun generateSampleTraffic() {
+        appendLog("→ 生成示例网络流量…")
+        lifecycleScope.launch(Dispatchers.IO) { trafficGen?.generate() }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        trafficGen?.shutdown()
     }
 
     private fun appendLog(msg: String) {
