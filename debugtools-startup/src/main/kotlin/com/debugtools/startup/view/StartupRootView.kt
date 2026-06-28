@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
@@ -20,7 +19,7 @@ import com.debugtools.startup.protocol.StartupSession
 class StartupRootView(
     context: Context,
     private val sessions: List<StartupSession>
-) : ScrollView(context), View.OnClickListener {
+) : ScrollView(context) {
 
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(p(12), p(12), p(12), p(12)) }
@@ -48,7 +47,7 @@ class StartupRootView(
         content.removeAllViews()
         content.addView(backBtn())
         val crit = CriticalPath.of(s)
-        val totalMs = (s.completedUptimeMs ?: s.launchUptimeMs) - s.launchUptimeMs
+        val totalMs = (s.completedUptimeMs ?: s.steps.mapNotNull { it.endUptimeMs }.maxOrNull() ?: s.launchUptimeMs) - s.launchUptimeMs
         content.addView(header("总耗时 ${totalMs}ms · 关键路径: ${crit.joinToString("→")}"))
         content.addView(toggleBtn())
         if (showingDag) content.addView(DagView(context, s), lp())
@@ -82,5 +81,4 @@ class StartupRootView(
         setOnClickListener { showingDag = false; showList() }
     }
 
-    override fun onClick(v: View?) {}
 }

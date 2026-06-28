@@ -98,6 +98,7 @@ object AppStartupMonitor {
 
     private val fallback = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityResumed(activity: Activity) {
+            if (persisted) return
             Handler(Looper.getMainLooper()).postDelayed({
                 val r = synchronized(lock) { recorder }
                 if (r != null && !r.isCompleted()) r.finalizeFallback()

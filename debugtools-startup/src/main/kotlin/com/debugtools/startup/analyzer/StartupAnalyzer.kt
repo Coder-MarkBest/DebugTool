@@ -4,6 +4,7 @@ import com.debugtools.startup.protocol.IssueType
 import com.debugtools.startup.protocol.Severity
 import com.debugtools.startup.protocol.StartupIssue
 import com.debugtools.startup.protocol.StartupSession
+import com.debugtools.startup.protocol.StartupStep
 import com.debugtools.startup.protocol.StepStatus
 
 /** Pure diagnostics over a finished (or finalized) startup session. */
@@ -50,7 +51,7 @@ object StartupAnalyzer {
         return issues
     }
 
-    private fun hasCycle(byName: Map<String, com.debugtools.startup.protocol.StartupStep>): Boolean {
+    private fun hasCycle(byName: Map<String, StartupStep>): Boolean {
         val state = HashMap<String, Int>()
         fun dfs(name: String): Boolean {
             when (state[name]) { 1 -> return true; 2 -> return false }

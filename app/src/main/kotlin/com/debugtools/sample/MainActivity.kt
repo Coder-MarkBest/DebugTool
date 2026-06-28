@@ -256,7 +256,7 @@ class MainActivity : AppCompatActivity() {
             btnCrash.isEnabled = true
             btnFeedAudio.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控")
+            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }
