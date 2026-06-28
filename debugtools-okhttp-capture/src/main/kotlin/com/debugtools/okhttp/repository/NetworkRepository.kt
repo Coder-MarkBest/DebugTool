@@ -119,15 +119,15 @@ class NetworkRepository(private val config: Config) {
     }
 
     /**
-     * Attach timing data to the most recent HttpRecord matching the given URL.
-     * Called post-hoc by TimingEventListener after callEnd/callFailed.
+     * Attach timing data to the HttpRecord with the given id. Called post-hoc by
+     * TimingEventListener after callEnd/callFailed. Matching by id (not URL) means
+     * concurrent same-URL requests and failed requests get their own timing.
      */
     @Synchronized
-    fun attachTimingByUrl(url: String, timing: com.debugtools.okhttp.data.Timing) {
-        val index = httpRecords.indexOfLast { it.url == url && it.timing == null }
+    fun attachTiming(recordId: String, timing: com.debugtools.okhttp.data.Timing) {
+        val index = httpRecords.indexOfLast { it.id == recordId }
         if (index >= 0) {
-            val record = httpRecords[index]
-            httpRecords[index] = record.copy(timing = timing)
+            httpRecords[index] = httpRecords[index].copy(timing = timing)
             publish()
         }
     }

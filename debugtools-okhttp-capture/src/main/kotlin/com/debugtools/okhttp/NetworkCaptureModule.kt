@@ -48,13 +48,16 @@ class NetworkCaptureModule private constructor(
     override val tabTitle: String = "网络抓包"
 
     private val repository = NetworkRepository(config)
+    // Shared by the interceptor and the event listener so per-phase timing attaches
+    // to the exact captured record (instead of a racy URL match).
+    private val correlator = com.debugtools.okhttp.capture.CallTimingCorrelator()
     private var presenter: NetworkCapturePresenter? = null
     private var scope: CoroutineScope? = null
     private var rootView: NetworkCaptureRootView? = null
 
-    fun httpInterceptor(): Interceptor = CapturingInterceptor(repository, config)
+    fun httpInterceptor(): Interceptor = CapturingInterceptor(repository, config, correlator)
 
-    fun eventListenerFactory(): EventListener.Factory = TimingEventListener.Factory(repository)
+    fun eventListenerFactory(): EventListener.Factory = TimingEventListener.Factory(repository, correlator)
 
     fun newWebSocket(
         client: OkHttpClient,

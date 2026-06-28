@@ -4,6 +4,7 @@ import com.debugtools.okhttp.Config
 import com.debugtools.okhttp.data.Direction
 import com.debugtools.okhttp.data.FrameType
 import com.debugtools.okhttp.data.HttpRecord
+import com.debugtools.okhttp.data.Timing
 import com.debugtools.okhttp.data.WebSocketFrame
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -31,6 +32,16 @@ class NetworkRepositoryTest {
         val repo = NetworkRepository(Config(maxHttpRecords = 3))
         listOf("a", "b", "c", "d", "e").forEach { repo.addHttp(httpRecord(it)) }
         assertEquals(listOf("c", "d", "e"), repo.snapshot().httpRecords.map { it.id })
+    }
+
+    @Test fun `attachTiming targets the record by id not url`() {
+        val repo = NetworkRepository(Config())
+        repo.addHttp(httpRecord("id1")) // both have url "/"
+        repo.addHttp(httpRecord("id2"))
+        repo.attachTiming("id1", Timing(null, null, null, null, null, null, totalMs = 42L))
+        val recs = repo.snapshot().httpRecords
+        assertEquals(42L, recs.first { it.id == "id1" }.timing?.totalMs)
+        assertNull("same-URL sibling must not receive the timing", recs.first { it.id == "id2" }.timing)
     }
 
     @Test fun `openSession creates session`() {

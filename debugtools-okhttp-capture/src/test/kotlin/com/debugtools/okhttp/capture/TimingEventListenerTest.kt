@@ -20,13 +20,14 @@ class TimingEventListenerTest {
     @Before fun setUp() {
         server = MockWebServer().apply { start() }
         repo = NetworkRepository(Config())
+        val correlator = CallTimingCorrelator()
         client = OkHttpClient.Builder()
-            .addInterceptor(CapturingInterceptor(repo))
-            .eventListenerFactory(TimingEventListener.Factory(repo))
+            .addInterceptor(CapturingInterceptor(repo, correlator = correlator))
+            .eventListenerFactory(TimingEventListener.Factory(repo, correlator))
             .build()
     }
 
-    @After fun tearDown() { server.shutdown() }
+    @After fun tearDown() { try { server.shutdown() } catch (_: Exception) {} }
 
     @Test fun `attaches timing data to HttpRecord`() {
         server.enqueue(MockResponse().setBody("ok"))
@@ -47,5 +48,16 @@ class TimingEventListenerTest {
         val records = repo.snapshot().httpRecords
         assertEquals(2, records.size)
         records.forEach { assertNotNull(it.timing) }
+    }
+
+    @Test fun `failed request still gets timing attached`() {
+        val url = server.url("/dead")
+        server.shutdown() // connecting now fails -> IOException
+        try {
+            client.newCall(Request.Builder().url(url).build()).execute().close()
+        } catch (_: Exception) { /* expected */ }
+        val record = repo.snapshot().httpRecords.single()
+        assertNotNull("failure should be captured", record.failure)
+        assertNotNull("a failed request should still carry phase timing", record.timing)
     }
 }
