@@ -51,6 +51,10 @@ class AudioPresenter(
     private var isRecording = false
     private var lastSession: AudioReportData? = null
     private var startTimeMs = 0L
+    // Identifies the current recording. Bumped on each start; in-flight frames/jobs
+    // from a previous recording carry an older id and are dropped, so a stop→start
+    // can't let stale frames or an old countdown corrupt the new recording.
+    @Volatile private var runId = 0
 
     private var bDetector = AudioAnomalyDetector(StreamId.B, silenceThresholdDb)
     private var aDetector = AudioAnomalyDetector(StreamId.A, silenceThresholdDb)
@@ -95,17 +99,20 @@ class AudioPresenter(
             return
         }
 
-        bDetector = AudioAnomalyDetector(StreamId.B, silenceThresholdDb)
-        aDetector = AudioAnomalyDetector(StreamId.A, silenceThresholdDb)
+        val bDet = AudioAnomalyDetector(StreamId.B, silenceThresholdDb)
+        val aDet = AudioAnomalyDetector(StreamId.A, silenceThresholdDb)
+        bDetector = bDet
+        aDetector = aDet
         bAnomalies.clear(); aAnomalies.clear()
         startTimeMs = System.currentTimeMillis()
+        val run = ++runId
         isRecording = true
         v.clearLive()
         v.showMonitoringState(true)
 
         recordJob = scope.launch(Dispatchers.IO) {
             try {
-                rec.audioStream.collect { controller?.feedStreamB(it) }
+                rec.audioStream.collect { if (run == runId) controller?.feedStreamB(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -115,28 +122,32 @@ class AudioPresenter(
         }
 
         bUiJob = scope.launch {
-            rec.audioStream.sample(60).collect { processLiveFrame(StreamId.B, it, bDetector, bAnomalies) }
+            rec.audioStream.sample(60).collect { processLiveFrame(run, StreamId.B, it, bDet, bAnomalies) }
         }
         aUiJob = scope.launch {
-            aFrameFlow.sample(60).collect { processLiveFrame(StreamId.A, it, aDetector, aAnomalies) }
+            aFrameFlow.sample(60).collect { processLiveFrame(run, StreamId.A, it, aDet, aAnomalies) }
         }
 
         durationJob = scope.launch {
             for (sec in 0 until maxDurationSec) {
                 withContext(Dispatchers.Main) {
-                    view?.showStatus("🎙️ 录制中 ${fmt(sec)} / ${fmt(maxDurationSec)}\n会话: ${ctrl.currentSessionDir?.name}")
+                    if (run == runId) {
+                        view?.showStatus("🎙️ 录制中 ${fmt(sec)} / ${fmt(maxDurationSec)}\n会话: ${ctrl.currentSessionDir?.name}")
+                    }
                 }
                 delay(1000)
             }
             withContext(Dispatchers.Main) {
-                view?.showStatus("🎙️ 录制中 ${fmt(maxDurationSec)} / ${fmt(maxDurationSec)}")
-                if (isRecording) stopRecording()
+                if (run == runId && isRecording) {
+                    view?.showStatus("🎙️ 录制中 ${fmt(maxDurationSec)} / ${fmt(maxDurationSec)}")
+                    stopRecording()
+                }
             }
         }
     }
 
     private suspend fun processLiveFrame(
-        stream: StreamId, frame: ShortArray,
+        run: Int, stream: StreamId, frame: ShortArray,
         detector: AudioAnomalyDetector, sink: MutableList<AnomalyEvent>
     ) {
         val peak = peakOf(frame)
@@ -145,6 +156,7 @@ class AudioPresenter(
         val spectrum = if (frame.size == fftSize) FftProcessor.computeMagnitudes(frame, fftSize) else FloatArray(0)
         val timeMs = System.currentTimeMillis() - startTimeMs
         withContext(Dispatchers.Main) {
+            if (run != runId) return@withContext // stale frame from a previous recording
             val events = detector.onFrame(timeMs, peak, db)
             view?.pushLiveFrame(stream, peak, rms, spectrum)
             for (e in events) view?.showAnomaly(e)
