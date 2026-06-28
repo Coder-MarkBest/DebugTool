@@ -1,5 +1,6 @@
 package com.debugtools.audiomon.anomaly
 
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -38,11 +39,14 @@ class AudioAnomalyDetector(
 
         // 1) clipping episode
         if (peak >= CLIP_THRESHOLD) {
-            if (!clipOpen) { clipOpen = true; clipStart = timeMs; clipMaxPeak = peak }
-            else clipMaxPeak = maxOf(clipMaxPeak, peak)
+            if (!clipOpen) {
+                clipOpen = true
+                clipStart = timeMs
+                clipMaxPeak = peak
+            } else clipMaxPeak = maxOf(clipMaxPeak, peak)
         } else if (clipOpen) {
             events += AnomalyEvent(stream, clipStart, AnomalyType.CLIPPING,
-                "peak ${"%.2f".format(clipMaxPeak)}")
+                "peak ${String.format(Locale.US, "%.2f", clipMaxPeak)}")
             clipOpen = false
         }
 
@@ -62,7 +66,12 @@ class AudioAnomalyDetector(
 
         // 3+4) quiet segment -> dropout or high noise floor on close
         if (db < silenceThresholdDb) {
-            if (!quietOpen) { quietOpen = true; quietStart = timeMs; quietSumDb = 0.0; quietCount = 0 }
+            if (!quietOpen) {
+                quietOpen = true
+                quietStart = timeMs
+                quietSumDb = 0.0
+                quietCount = 0
+            }
             quietSumDb += db
             quietCount++
             quietLast = timeMs
@@ -79,7 +88,7 @@ class AudioAnomalyDetector(
         val events = mutableListOf<AnomalyEvent>()
         if (clipOpen) {
             events += AnomalyEvent(stream, clipStart, AnomalyType.CLIPPING,
-                "peak ${"%.2f".format(clipMaxPeak)}")
+                "peak ${String.format(Locale.US, "%.2f", clipMaxPeak)}")
             clipOpen = false
         }
         if (quietOpen) {
