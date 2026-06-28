@@ -28,6 +28,7 @@ class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
     private val anomalyList = AnomalyListView(context)
     private val legend = AnomalyLegendView(context)
     private val statusText = TextView(context)
+    private val inputWarning = TextView(context)
     private val lastSessionText = TextView(context)
     private val toggleBtn = TextView(context)
     private val reportBtn = TextView(context)
@@ -47,6 +48,12 @@ class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
             setOnClickListener { toggleListener?.invoke() }
         }
         statusText.apply { setTextColor(AudioColors.TEXT_DIM); textSize = 12f; setPadding(mx(2f), mx(8f), mx(2f), mx(8f)) }
+        inputWarning.apply {
+            setTextColor(AudioColors.TEXT); textSize = 12f; typeface = Typeface.DEFAULT_BOLD
+            setPadding(mx(8f), mx(6f), mx(8f), mx(6f))
+            background = GradientDrawable().apply { cornerRadius = 8f * density; setColor(AudioColors.STOP) }
+            visibility = GONE
+        }
         lastSessionText.apply { setTextColor(AudioColors.TEXT_DIM); textSize = 12f }
         reportBtn.apply {
             text = "📤 上报最近会话"; setTextColor(AudioColors.TEXT); textSize = 13f
@@ -60,6 +67,7 @@ class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
         content.setPadding(mx(12f), mx(12f), mx(12f), mx(12f))
         content.addView(toggleBtn, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(statusText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(inputWarning, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = mx(4f) })
         content.addView(laneA, laneParams())
         content.addView(laneB, laneParams())
         content.addView(sectionLabel("⚠ 异常"))
@@ -106,7 +114,19 @@ class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
         reportBtn.isFocusable = reporterConfigured
     }
 
-    override fun clearLive() { laneA.clear(); laneB.clear(); anomalyList.clear() }
+    override fun clearLive() {
+        laneA.clear(); laneB.clear(); anomalyList.clear()
+        showInputWarning(null)
+    }
+
+    override fun showInputWarning(message: String?) {
+        if (message == null) {
+            inputWarning.visibility = GONE
+        } else {
+            inputWarning.text = message
+            inputWarning.visibility = VISIBLE
+        }
+    }
 
     override fun pushLiveFrame(stream: StreamId, peak: Float, rms: Float, spectrum: FloatArray) {
         (if (stream == StreamId.A) laneA else laneB).pushFrame(peak, rms, spectrum)

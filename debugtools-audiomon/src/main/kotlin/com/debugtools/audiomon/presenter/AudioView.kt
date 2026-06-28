@@ -23,6 +23,9 @@ interface AudioView {
     /** Reset both lanes and the anomaly list at the start of a recording. */
     fun clearLive()
 
+    /** Show a mic-input warning banner, or pass null to hide it. */
+    fun showInputWarning(message: String?)
+
     /** Append one display frame to a stream's lane (waveform uses peak+rms, spectrum bars use spectrum). */
     fun pushLiveFrame(stream: StreamId, peak: Float, rms: Float, spectrum: FloatArray)
 

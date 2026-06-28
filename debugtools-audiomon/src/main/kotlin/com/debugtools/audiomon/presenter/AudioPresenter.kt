@@ -34,6 +34,7 @@ class AudioPresenter(
     private companion object {
         const val TAG = "AudioPresenter"
         const val MIN_DB = -90f
+        const val NO_INPUT_MS = 2000L
     }
 
     private var view: AudioView? = null
@@ -55,6 +56,11 @@ class AudioPresenter(
     // from a previous recording carry an older id and are dropped, so a stop→start
     // can't let stale frames or an old countdown corrupt the new recording.
     @Volatile private var runId = 0
+
+    // Mic (stream B) no-input detection: warn if B stays digitally silent (all-zero
+    // samples) for longer than NO_INPUT_MS — i.e. the mic is muted or not wired up.
+    private var lastBInputMs = 0L
+    private var inputWarned = false
 
     private var bDetector = AudioAnomalyDetector(StreamId.B, silenceThresholdDb)
     private var aDetector = AudioAnomalyDetector(StreamId.A, silenceThresholdDb)
@@ -105,6 +111,8 @@ class AudioPresenter(
         aDetector = aDet
         bAnomalies.clear(); aAnomalies.clear()
         startTimeMs = System.currentTimeMillis()
+        lastBInputMs = startTimeMs
+        inputWarned = false
         val run = ++runId
         isRecording = true
         v.clearLive()
@@ -161,6 +169,22 @@ class AudioPresenter(
             view?.pushLiveFrame(stream, peak, rms, spectrum)
             for (e in events) view?.showAnomaly(e)
             if (events.isNotEmpty()) sink.addAll(events)
+            if (stream == StreamId.B) updateInputWarning(peak)
+        }
+    }
+
+    /** Warn when the mic (stream B) yields only digital silence (all-zero) past the grace window. */
+    private fun updateInputWarning(peak: Float) {
+        val now = System.currentTimeMillis()
+        if (peak > 0f) {
+            lastBInputMs = now
+            if (inputWarned) {
+                inputWarned = false
+                view?.showInputWarning(null)
+            }
+        } else if (!inputWarned && now - lastBInputMs > NO_INPUT_MS) {
+            inputWarned = true
+            view?.showInputWarning("⚠️ B路(麦克风)无输入 — 可能被静音或未接入")
         }
     }
 
@@ -185,8 +209,10 @@ class AudioPresenter(
         val report = controller?.finish(bAnomalies.toList(), aAnomalies.toList())
         controller = null
         isRecording = false
+        inputWarned = false
         lastSession = report
         view?.showMonitoringState(false)
+        view?.showInputWarning(null)
 
         if (report != null) {
             val aState = if (report.streamAWav != null) "A路+B路" else "仅B路"
