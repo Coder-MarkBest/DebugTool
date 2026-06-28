@@ -108,8 +108,8 @@ class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
 
     override fun clearLive() { laneA.clear(); laneB.clear(); anomalyList.clear() }
 
-    override fun pushLiveFrame(stream: StreamId, db: Float, spectrum: FloatArray) {
-        (if (stream == StreamId.A) laneA else laneB).pushFrame(db, spectrum)
+    override fun pushLiveFrame(stream: StreamId, peak: Float, rms: Float, spectrum: FloatArray) {
+        (if (stream == StreamId.A) laneA else laneB).pushFrame(peak, rms, spectrum)
     }
 
     override fun showAnomaly(event: AnomalyEvent) {

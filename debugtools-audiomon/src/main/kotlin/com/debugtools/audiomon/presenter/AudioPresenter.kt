@@ -140,12 +140,13 @@ class AudioPresenter(
         detector: AudioAnomalyDetector, sink: MutableList<AnomalyEvent>
     ) {
         val peak = peakOf(frame)
-        val db = ampToDb(FftProcessor.computeRms(frame))
+        val rms = FftProcessor.computeRms(frame)
+        val db = ampToDb(rms)
         val spectrum = if (frame.size == fftSize) FftProcessor.computeMagnitudes(frame, fftSize) else FloatArray(0)
         val timeMs = System.currentTimeMillis() - startTimeMs
         withContext(Dispatchers.Main) {
             val events = detector.onFrame(timeMs, peak, db)
-            view?.pushLiveFrame(stream, db, spectrum)
+            view?.pushLiveFrame(stream, peak, rms, spectrum)
             for (e in events) view?.showAnomaly(e)
             if (events.isNotEmpty()) sink.addAll(events)
         }

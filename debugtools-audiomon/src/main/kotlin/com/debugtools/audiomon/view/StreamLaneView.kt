@@ -10,14 +10,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.debugtools.audiomon.anomaly.StreamId
 
-/** One stream's lane: chip label + scrolling envelope + spectrogram, in a card. */
+/** One stream's lane: chip label + Audition-style waveform + real-time spectrum bars, in a card. */
 @SuppressLint("ViewConstructor")
 class StreamLaneView(context: Context, stream: StreamId) : LinearLayout(context) {
 
     private val density = resources.displayMetrics.density
     private val accent = if (stream == StreamId.A) AudioColors.STREAM_A else AudioColors.STREAM_B
-    private val envelope = ScrollingEnvelopeView(context, accent)
-    private val spectro = SpectrogramView(context)
+    private val waveform = WaveformView(context, accent)
+    private val bars = SpectrumBarsView(context, accent)
 
     init {
         orientation = VERTICAL
@@ -31,22 +31,23 @@ class StreamLaneView(context: Context, stream: StreamId) : LinearLayout(context)
 
         val subtitle = if (stream == StreamId.A) "A路 · 处理后" else "B路 · 麦克风"
         addView(chip(subtitle), LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
-        addView(label("能量包络"))
-        addView(envelope, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = (2 * density).toInt() })
-        addView(label("声谱图"))
-        addView(spectro, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = (2 * density).toInt() })
+        addView(label("波形"))
+        addView(waveform, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = (2 * density).toInt() })
+        addView(label("频谱"))
+        addView(bars, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = (2 * density).toInt() })
     }
 
-    fun pushFrame(db: Float, spectrum: FloatArray) {
-        envelope.pushColumn(db, false)
-        if (spectrum.isNotEmpty()) spectro.pushColumn(spectrum, false)
+    fun pushFrame(peak: Float, rms: Float, spectrum: FloatArray) {
+        waveform.pushColumn(peak, rms, false)
+        if (spectrum.isNotEmpty()) bars.setSpectrum(spectrum)
     }
 
+    /** Bars have no time axis, so only the waveform carries the anomaly marker. */
     fun markLastAnomaly() {
-        envelope.markLast(); spectro.markLast()
+        waveform.markLast()
     }
 
-    fun clear() { envelope.clear(); spectro.clear() }
+    fun clear() { waveform.clear(); bars.clear() }
 
     private fun chip(text: String): TextView = TextView(context).apply {
         this.text = text

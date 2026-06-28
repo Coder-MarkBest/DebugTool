@@ -23,8 +23,8 @@ interface AudioView {
     /** Reset both lanes and the anomaly list at the start of a recording. */
     fun clearLive()
 
-    /** Append one display frame to a stream's lane (envelope uses db, spectrogram uses spectrum). */
-    fun pushLiveFrame(stream: StreamId, db: Float, spectrum: FloatArray)
+    /** Append one display frame to a stream's lane (waveform uses peak+rms, spectrum bars use spectrum). */
+    fun pushLiveFrame(stream: StreamId, peak: Float, rms: Float, spectrum: FloatArray)
 
     /** Mark the latest column of the stream's lane anomalous + append to the anomaly list. */
     fun showAnomaly(event: AnomalyEvent)
