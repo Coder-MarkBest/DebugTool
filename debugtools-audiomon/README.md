@@ -4,12 +4,14 @@
 
 ## 能力概览
 
-- **实时监控**：示波器波形 + FFT 频谱。
+- **双路滚动可视化**：A/B 两路各「dB 能量包络 + 声谱图」，最近 ~10s 窗口实时滚动。
+- **实时异常检测**：削波 / 异常静音 / 能量突变 / 底噪偏高，图上标注 + 底部列表（时间+类型+详情），并写入 `session.json`（`anomalySource: live@~16fps`）。底部「异常类型说明」可折叠查看每类问题含义。
+- **录制时长上限**：设置 `max_duration_sec`（10/20/30/40/50/60 秒），到时自动结束并落盘；状态栏显示倒计时。
 - **双路录制会话**：点一次「开始录制 → 结束录制」为一个会话，产物写入独立目录：
   - `streamB.wav` —— DebugTool 自采集（麦克风原始音，始终存在）
   - `streamA.wav` —— 语音助手处理后音频（宿主推入才有，可选）
   - `streamB.features.json` / `streamA.features.json` —— 各路数值特性
-  - `session.json` —— 会话元数据（起止时间、采样率、各路是否存在、特性摘要）
+  - `session.json` —— 会话元数据（起止时间、采样率、各路是否存在、特性摘要、各路异常列表 `anomalies`、`anomalySource`）
 - **数值特性**（每路独立，整段汇总）：基础幅度（时长/RMS/峰值/dB）、静音与活动占比、频谱特征（主频/质心/分频段能量）、逐帧 RMS/dB 时序曲线。
 - **网络上报**：SDK 只负责落盘并在会话结束时回调宿主实现的 `AudioReporter`；**具体怎么上传由接入方自己实现**。
 
@@ -75,6 +77,7 @@ audioModule.feedProcessedAudio(processedFrame)   // ShortArray, PCM16 mono
 | `save_dir` | 会话根目录 | `getExternalFilesDir(MUSIC)` |
 | `silence_threshold_db` | 静音判定阈值 (dB) | `-50` |
 | `auto_report` | 结束录制后自动上报 | `false` |
+| `max_duration_sec` | 录制时长上限（秒，到时自动结束并落盘） | `10` |
 
 > 采样率一致性由宿主保证：`feedProcessedAudio` 推入的帧应与 `sample_rate` 一致，否则需宿主自行重采样。
 
