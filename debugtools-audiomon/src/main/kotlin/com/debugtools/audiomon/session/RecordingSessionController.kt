@@ -1,5 +1,6 @@
 package com.debugtools.audiomon.session
 
+import com.debugtools.audiomon.anomaly.AnomalyEvent
 import com.debugtools.audiomon.audio.AudioFeatureExtractor
 import com.debugtools.audiomon.audio.AudioFeatures
 import com.debugtools.audiomon.audio.WavFileWriter
@@ -95,7 +96,10 @@ class RecordingSessionController(
 
     /** Finalize files and return the session artifacts, or null if not started. */
     @Synchronized
-    fun finish(): AudioReportData? {
+    fun finish(
+        streamBAnomalies: List<AnomalyEvent> = emptyList(),
+        streamAAnomalies: List<AnomalyEvent> = emptyList()
+    ): AudioReportData? {
         val id = sessionId ?: return null
         val dir = sessionDir ?: return null
         val endTime = clock()
@@ -110,7 +114,8 @@ class RecordingSessionController(
         val aFeaturesFile = aFeatures?.let { writeFeatures(dir, "streamA.features.json", it) }
 
         val aPresent = aExtractor != null
-        val metadata = writeSessionJson(dir, id, endTime, bFeatures, aFeatures, aPresent)
+        val metadata = writeSessionJson(dir, id, endTime, bFeatures, aFeatures, aPresent,
+            streamBAnomalies, streamAAnomalies)
 
         val report = AudioReportData(
             sessionId = id,
@@ -147,15 +152,17 @@ class RecordingSessionController(
         endTime: Long,
         bFeatures: AudioFeatures?,
         aFeatures: AudioFeatures?,
-        aPresent: Boolean
+        aPresent: Boolean,
+        bAnomalies: List<AnomalyEvent>,
+        aAnomalies: List<AnomalyEvent>
     ): File {
         val streams = JSONObject().apply {
             put("streamB", streamNode(present = true, wav = "streamB.wav",
-                features = "streamB.features.json", f = bFeatures))
+                features = "streamB.features.json", f = bFeatures, anomalies = bAnomalies))
             put("streamA", streamNode(present = aPresent,
                 wav = if (aPresent) "streamA.wav" else JSONObject.NULL,
                 features = if (aPresent) "streamA.features.json" else JSONObject.NULL,
-                f = aFeatures))
+                f = aFeatures, anomalies = aAnomalies))
         }
         val root = JSONObject().apply {
             put("sessionId", id)
@@ -163,6 +170,7 @@ class RecordingSessionController(
             put("endTime", endTime)
             put("durationMs", endTime - startTime)
             put("sampleRate", sampleRate)
+            put("anomalySource", "live@~16fps")
             put("streams", streams)
         }
         val file = File(dir, "session.json")
@@ -170,12 +178,14 @@ class RecordingSessionController(
         return file
     }
 
-    private fun streamNode(present: Boolean, wav: Any?, features: Any?, f: AudioFeatures?): JSONObject =
+    private fun streamNode(present: Boolean, wav: Any?, features: Any?, f: AudioFeatures?,
+                           anomalies: List<AnomalyEvent>): JSONObject =
         JSONObject().apply {
             put("present", present)
             put("wav", wav ?: JSONObject.NULL)
             put("features", features ?: JSONObject.NULL)
             put("summary", f?.summaryJson() ?: JSONObject.NULL)
+            put("anomalies", org.json.JSONArray().apply { anomalies.forEach { put(it.toJson()) } })
         }
 
     private fun reset() {

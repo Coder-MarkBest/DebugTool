@@ -1,5 +1,8 @@
 package com.debugtools.audiomon.session
 
+import com.debugtools.audiomon.anomaly.AnomalyEvent
+import com.debugtools.audiomon.anomaly.AnomalyType
+import com.debugtools.audiomon.anomaly.StreamId
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -91,6 +94,22 @@ class RecordingSessionControllerTest {
         val report = c.finish()
         assertNotNull(report)
         assertTrue(report!!.streamBWav!!.exists())
+    }
+
+    @Test
+    fun `finish writes anomalies and source into session json`() {
+        val c = controller(tmp.root)
+        c.start()
+        repeat(4) { c.feedStreamB(sine(fftSize, 64, 0.5)) }
+        val bAnoms = listOf(AnomalyEvent(StreamId.B, 300, AnomalyType.CLIPPING, "peak 1.00"))
+        val report = c.finish(streamBAnomalies = bAnoms, streamAAnomalies = emptyList())!!
+        val json = org.json.JSONObject(report.metadata.readText())
+        assertEquals("live@~16fps", json.getString("anomalySource"))
+        val bArr = json.getJSONObject("streams").getJSONObject("streamB").getJSONArray("anomalies")
+        assertEquals(1, bArr.length())
+        assertEquals("CLIPPING", bArr.getJSONObject(0).getString("type"))
+        val aArr = json.getJSONObject("streams").getJSONObject("streamA").getJSONArray("anomalies")
+        assertEquals(0, aArr.length())
     }
 
     @Test
