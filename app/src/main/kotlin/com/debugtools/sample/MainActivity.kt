@@ -25,7 +25,9 @@ import com.debugtools.general.GeneralModule
 import com.debugtools.network.NetworkModule
 import com.debugtools.okhttp.NetworkCaptureModule
 import com.debugtools.perfmon.PerfMonitorModule
+import com.debugtools.startup.store.StartupStore
 import com.debugtools.timeline.TimelineModule
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -70,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnSendWs: Button
     private lateinit var btnCrash: Button
     private lateinit var btnFeedAudio: Button
+    private lateinit var btnGenStartup: Button
     private lateinit var logView: TextView
 
     // 模拟语音助手的一次完整对话流程
@@ -171,6 +174,13 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(btnFeedAudio)
 
+        btnGenStartup = Button(this).apply {
+            text = "🧩 生成示例启动会话（5 条）"
+            isEnabled = false
+            setOnClickListener { generateSampleStartupSessions() }
+        }
+        root.addView(btnGenStartup)
+
         logView = TextView(this).apply {
             text = "--- 日志 ---"
             textSize = 11f
@@ -255,6 +265,7 @@ class MainActivity : AppCompatActivity() {
             btnSendWs.isEnabled = true
             btnCrash.isEnabled = true
             btnFeedAudio.isEnabled = true
+            btnGenStartup.isEnabled = true
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路")
         } catch (e: Exception) {
@@ -393,6 +404,16 @@ class MainActivity : AppCompatActivity() {
             toast("1秒后抛出异常，观察 DebugTools 是否捕获 CrashInfo...")
             delay(1000)
             throw RuntimeException("模拟崩溃：ASR 引擎内部 NullPointerException at AudioProcessor.process()")
+        }
+    }
+
+    /** Write 5 varied sample startup sessions to the store so 「启动链路」 is populated without restarting. */
+    private fun generateSampleStartupSessions() {
+        appendLog("→ 写入示例启动会话…")
+        lifecycleScope.launch(Dispatchers.IO) {
+            val store = StartupStore(File(filesDir, "startup"))
+            SampleStartupSessions.all(System.currentTimeMillis()).forEach { store.save(it) }
+            runOnUiThread { appendLog("✅ 已写入 5 条示例启动会话 — 打开「启动链路」Tab 查看") }
         }
     }
 
