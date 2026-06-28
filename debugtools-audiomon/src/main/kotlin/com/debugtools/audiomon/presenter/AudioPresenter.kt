@@ -89,7 +89,9 @@ class AudioPresenter(
         val result = rec.start()
         if (result.isFailure) {
             v.showStatus("❌ ${result.exceptionOrNull()?.message}")
-            ctrl.finish(); controller = null; recorder = null
+            ctrl.finish()
+            controller = null
+            recorder = null
             return
         }
 
@@ -126,7 +128,10 @@ class AudioPresenter(
                 }
                 delay(1000)
             }
-            withContext(Dispatchers.Main) { if (isRecording) stopRecording() }
+            withContext(Dispatchers.Main) {
+                view?.showStatus("🎙️ 录制中 ${fmt(maxDurationSec)} / ${fmt(maxDurationSec)}")
+                if (isRecording) stopRecording()
+            }
         }
     }
 
@@ -138,18 +143,23 @@ class AudioPresenter(
         val db = ampToDb(FftProcessor.computeRms(frame))
         val spectrum = if (frame.size == fftSize) FftProcessor.computeMagnitudes(frame, fftSize) else FloatArray(0)
         val timeMs = System.currentTimeMillis() - startTimeMs
-        val events = detector.onFrame(timeMs, peak, db)
         withContext(Dispatchers.Main) {
+            val events = detector.onFrame(timeMs, peak, db)
             view?.pushLiveFrame(stream, db, spectrum)
             for (e in events) view?.showAnomaly(e)
+            if (events.isNotEmpty()) sink.addAll(events)
         }
-        if (events.isNotEmpty()) sink.addAll(events)
     }
 
+    /** Must be called on the main thread (toggle / countdown / detach all dispatch here). */
     fun stopRecording() {
         durationJob?.cancel(); durationJob = null
-        recordJob?.cancel(); bUiJob?.cancel(); aUiJob?.cancel()
-        recordJob = null; bUiJob = null; aUiJob = null
+        recordJob?.cancel()
+        bUiJob?.cancel()
+        aUiJob?.cancel()
+        recordJob = null
+        bUiJob = null
+        aUiJob = null
 
         recorder?.stop(); recorder?.destroy(); recorder = null
 
