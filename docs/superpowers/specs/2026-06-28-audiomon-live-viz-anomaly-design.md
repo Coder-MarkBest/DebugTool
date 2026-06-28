@@ -73,8 +73,12 @@ fun flush(timeMs: Long): List<AnomalyEvent>                            // 停止
 ### 4.2 事件结构
 ```kotlin
 enum class StreamId(val label: String) { A("A路"), B("B路") }
-enum class AnomalyType(val label: String) {
-    CLIPPING("削波"), SILENCE_DROPOUT("异常静音"), ENERGY_JUMP("能量突变"), HIGH_NOISE_FLOOR("底噪偏高")
+// hint = 该异常"可能引起的问题"，供底部折叠说明区复用（见 §7.3）
+enum class AnomalyType(val label: String, val hint: String) {
+    CLIPPING("削波", "输入增益过高或信号过强，波形被截顶产生谐波失真；常导致破音、ASR 识别率下降。"),
+    SILENCE_DROPOUT("异常静音", "麦克风被占用/静音、采集中断或丢帧、VAD 误切；可能漏识别、对话中断。"),
+    ENERGY_JUMP("能量突变", "突发噪声、回声、设备碰撞或 AGC 增益抖动；可能引起误唤醒、识别错误。"),
+    HIGH_NOISE_FLOOR("底噪偏高", "环境噪声大、降噪/AEC 不足或硬件底噪高；降低信噪比，影响远场识别。")
 }
 data class AnomalyEvent(val stream: StreamId, val timeMs: Long, val type: AnomalyType, val detail: String) {
     fun toJson(): JSONObject  // {stream, timeMs, type, typeLabel, detail}
@@ -136,6 +140,12 @@ data class AnomalyEvent(val stream: StreamId, val timeMs: Long, val type: Anomal
 - **包络**：lane 主题色描边 + 同色 30% 透明渐变填充；异常列用 `#FB7185` 竖线标注。
 - 统一 12–16dp 间距；面板整体放进 `ScrollView`（4 图 + 列表超出面板高度）。
 
+### 7.3 底部「异常类型说明」折叠区
+面板**最下方**一个折叠区，默认收起，点击展开，列出四类异常**可能引起的问题**：
+- 折叠头一行：`▸ 异常类型说明`（点击切换；箭头 `▸`/`▾`，次文字色）。
+- 展开体：四条，每条 = 该类型的小色点 + `label` + `hint`（文案来自 `AnomalyType.hint`，§4.2），自动覆盖全部 `AnomalyType`，新增类型无需改 UI。
+- 默认 `collapsed = true`；纯前端，无 Presenter 参与。
+
 ## 8. 数据流（Presenter 编排）
 
 - **两路对称化**：新增 `aFrameFlow: MutableSharedFlow<ShortArray>(replay=0, extraBufferCapacity=8, DROP_OLDEST)`。`feedProcessedAudio(frame)` 同时 `controller?.feedStreamA(frame)`（落盘）+ `aFrameFlow.tryEmit(frame)`（可视化）。
@@ -161,7 +171,7 @@ fun addAnomalyEntry(text: String)
 新增：
 - `anomaly/StreamId.kt`、`anomaly/AnomalyType.kt`、`anomaly/AnomalyEvent.kt`
 - `anomaly/AudioAnomalyDetector.kt`（纯逻辑）
-- `view/ScrollingEnvelopeView.kt`、`view/SpectrogramView.kt`、`view/StreamLaneView.kt`、`view/AnomalyListView.kt`
+- `view/ScrollingEnvelopeView.kt`、`view/SpectrogramView.kt`、`view/StreamLaneView.kt`、`view/AnomalyListView.kt`、`view/AnomalyLegendView.kt`（底部折叠说明）
 - `view/AudioColors.kt`（集中配色 + 声谱图 LUT，供各视图复用）
 - 测试 `anomaly/AudioAnomalyDetectorTest.kt`
 
