@@ -27,6 +27,6 @@ class AudioColorsTest {
 
     @Test
     fun `every anomaly type has a color`() {
-        assertTrue(AnomalyType.values().all { AudioColors.anomalyTypeColor(it) != 0 })
+        assertTrue(AnomalyType.entries.all { AudioColors.anomalyTypeColor(it) != 0 })
     }
 }

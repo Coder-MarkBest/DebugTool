@@ -1,5 +1,6 @@
 package com.debugtools.audiomon.view
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -14,6 +15,7 @@ import java.util.Arrays
  * blits the bitmap in two halves so the oldest column is leftmost. Low
  * frequencies at the bottom. Anomaly columns get a top tick.
  */
+@SuppressLint("ViewConstructor")
 class SpectrogramView(context: Context) : View(context) {
 
     private companion object {

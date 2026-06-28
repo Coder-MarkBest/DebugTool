@@ -19,6 +19,6 @@ class AnomalyEventTest {
 
     @Test
     fun `every anomaly type has a non-empty hint`() {
-        assertTrue(AnomalyType.values().all { it.hint.isNotBlank() && it.label.isNotBlank() })
+        assertTrue(AnomalyType.entries.all { it.hint.isNotBlank() && it.label.isNotBlank() })
     }
 }

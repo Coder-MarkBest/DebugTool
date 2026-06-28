@@ -1,11 +1,13 @@
 package com.debugtools.audiomon.view
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /** Accumulating anomaly log (newest on top), capped to [MAX] rows. */
+@SuppressLint("ViewConstructor")
 class AnomalyListView(context: Context) : LinearLayout(context) {
 
     private companion object { const val MAX = 50 }

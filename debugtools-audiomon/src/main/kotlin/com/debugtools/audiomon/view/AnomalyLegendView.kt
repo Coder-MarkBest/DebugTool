@@ -1,5 +1,6 @@
 package com.debugtools.audiomon.view
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
 import android.view.View
@@ -8,6 +9,7 @@ import android.widget.TextView
 import com.debugtools.audiomon.anomaly.AnomalyType
 
 /** Bottom collapsible legend: tap header to expand the four anomaly explanations. */
+@SuppressLint("ViewConstructor")
 class AnomalyLegendView(context: Context) : LinearLayout(context) {
 
     private val density = resources.displayMetrics.density
@@ -29,7 +31,7 @@ class AnomalyLegendView(context: Context) : LinearLayout(context) {
             orientation = VERTICAL
             visibility = View.GONE
         }
-        for (t in AnomalyType.values()) {
+        for (t in AnomalyType.entries) {
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 setPadding(0, (3 * density).toInt(), 0, (3 * density).toInt())
