@@ -14,23 +14,39 @@ import com.debugtools.startup.analyzer.CriticalPath
 import com.debugtools.startup.analyzer.StartupAnalyzer
 import com.debugtools.startup.protocol.StartupSession
 
-/** Scrollable panel: session list -> tap -> session detail (summary + Gantt/DAG toggle + issues). */
+/**
+ * Scrollable panel: session list -> tap -> session detail (summary + Gantt/DAG toggle + issues).
+ *
+ * [loadSessions] is invoked on construction AND every time the view is (re)attached to the
+ * window. The overlay caches this content view, so re-reading the store on attach is what makes
+ * newly written sessions appear when the user re-opens the 启动链路 tab.
+ */
 @SuppressLint("ViewConstructor")
 class StartupRootView(
     context: Context,
-    private val sessions: List<StartupSession>
+    private val loadSessions: () -> List<StartupSession>
 ) : ScrollView(context) {
 
     private val density = resources.displayMetrics.density
     private val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(p(12), p(12), p(12), p(12)) }
     private var showingDag = false
     private var picked: StartupSession? = null
+    private var sessions: List<StartupSession> = emptyList()
 
     private fun p(v: Int) = (v * density).toInt()
 
     init {
         setBackgroundColor(StartupColors.BG)
         addView(content)
+        sessions = loadSessions()
+        showList()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Re-read the store each time the tab is shown so newly written sessions appear.
+        sessions = loadSessions()
+        showingDag = false
         showList()
     }
 

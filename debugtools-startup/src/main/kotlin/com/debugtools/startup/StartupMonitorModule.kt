@@ -36,10 +36,11 @@ class StartupMonitorModule : DebugModule {
 
     override fun createContentView(context: Context): View {
         val store = StartupStore(File(context.applicationContext.filesDir, "startup"))
-        val persisted = store.load()
-        val current = AppStartupMonitor.currentSession()
-        val sessions = mergeCurrent(current, persisted)
-        return StartupRootView(context, sessions)
+        // Pass a loader (not a static list): the overlay caches this view, so it must
+        // re-read the store + current session each time the tab is (re)opened.
+        return StartupRootView(context) {
+            mergeCurrent(AppStartupMonitor.currentSession(), store.load())
+        }
     }
 
     override fun buildSettings(): List<SettingGroup> = emptyList()
