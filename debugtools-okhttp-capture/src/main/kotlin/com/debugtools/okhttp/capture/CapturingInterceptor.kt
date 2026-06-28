@@ -20,11 +20,16 @@ import java.util.UUID
  */
 class CapturingInterceptor(
     private val repository: NetworkRepository,
-    private val config: Config = Config()
+    private val config: Config = Config(),
+    private val correlator: CallTimingCorrelator? = null
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        // Generate the record id up-front and link it to this Call so TimingEventListener
+        // can attach phase timing to this exact record (success or failure).
+        val recordId = UUID.randomUUID().toString()
+        correlator?.link(chain.call(), recordId)
         val startedAtNanos = System.nanoTime()
         val timestamp = System.currentTimeMillis()
 
@@ -32,16 +37,17 @@ class CapturingInterceptor(
             chain.proceed(request)
         } catch (e: IOException) {
             val durationMs = (System.nanoTime() - startedAtNanos) / 1_000_000L
-            repository.addHttp(failureRecord(request, e, timestamp, durationMs))
+            repository.addHttp(failureRecord(recordId, request, e, timestamp, durationMs))
             throw e
         }
 
         val durationMs = (System.nanoTime() - startedAtNanos) / 1_000_000L
-        repository.addHttp(buildRecord(request, response, timestamp, durationMs))
+        repository.addHttp(buildRecord(recordId, request, response, timestamp, durationMs))
         return response
     }
 
     private fun buildRecord(
+        recordId: String,
         request: okhttp3.Request,
         response: Response,
         timestamp: Long,
@@ -54,7 +60,7 @@ class CapturingInterceptor(
             request.header("Upgrade")?.equals("websocket", ignoreCase = true) == true
 
         return HttpRecord(
-            id = UUID.randomUUID().toString(),
+            id = recordId,
             timestamp = timestamp,
             method = request.method,
             url = request.url.toString(),
@@ -74,12 +80,13 @@ class CapturingInterceptor(
     }
 
     private fun failureRecord(
+        recordId: String,
         request: okhttp3.Request,
         error: Throwable,
         timestamp: Long,
         durationMs: Long
     ): HttpRecord = HttpRecord(
-        id = UUID.randomUUID().toString(),
+        id = recordId,
         timestamp = timestamp,
         method = request.method,
         url = request.url.toString(),

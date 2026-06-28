@@ -19,10 +19,11 @@ import java.util.concurrent.ConcurrentHashMap
  * in [NetworkRepository].
  *
  * Because [callEnd] fires AFTER the Interceptor chain has already added the record,
- * timing is attached post-hoc by matching the request URL.
+ * timing is attached post-hoc to the record id linked via [CallTimingCorrelator].
  */
 class TimingEventListener(
-    private val repository: NetworkRepository
+    private val repository: NetworkRepository,
+    private val correlator: CallTimingCorrelator? = null
 ) : EventListener() {
 
     /** Mutable builder kept while the call is in flight. */
@@ -52,8 +53,11 @@ class TimingEventListener(
 
     private val builders = ConcurrentHashMap<Call, Builder>()
 
-    class Factory(private val repository: NetworkRepository) : EventListener.Factory {
-        override fun create(call: Call): EventListener = TimingEventListener(repository)
+    class Factory(
+        private val repository: NetworkRepository,
+        private val correlator: CallTimingCorrelator? = null
+    ) : EventListener.Factory {
+        override fun create(call: Call): EventListener = TimingEventListener(repository, correlator)
     }
 
     override fun callStart(call: Call) {
@@ -118,6 +122,7 @@ class TimingEventListener(
     private fun finalize(call: Call) {
         val builder = builders.remove(call) ?: return
         val timing = builder.build(System.nanoTime())
-        repository.attachTimingByUrl(call.request().url.toString(), timing)
+        val recordId = correlator?.consume(call) ?: return
+        repository.attachTiming(recordId, timing)
     }
 }
