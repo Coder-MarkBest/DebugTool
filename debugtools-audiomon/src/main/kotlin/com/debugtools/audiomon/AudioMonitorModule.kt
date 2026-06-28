@@ -50,6 +50,7 @@ class AudioMonitorModule(
         val rootPath = storage.getString("save_dir", getDefaultSaveDir(context).absolutePath)
         val autoReport = storage.getBoolean("auto_report", false)
         val silenceThresholdDb = storage.getString("silence_threshold_db", "-50").toFloatOrNull() ?: -50f
+        val maxDurationSec = storage.getString("max_duration_sec", "10").toIntOrNull() ?: 10
 
         val rootDir = File(rootPath).also { if (!it.exists()) it.mkdirs() }
 
@@ -58,6 +59,7 @@ class AudioMonitorModule(
             rootDir = rootDir,
             silenceThresholdDb = silenceThresholdDb,
             autoReport = autoReport,
+            maxDurationSec = maxDurationSec,
             reporter = reporter
         )
     }
@@ -126,7 +128,14 @@ class AudioMonitorModule(
                         label = "结束后自动上报",
                         default = false,
                         description = "录制结束后自动调用宿主上报接口（未配置接口则忽略）"
-                    )
+                    ),
+                    SettingItem.SingleSelect(
+                        key = "max_duration_sec",
+                        label = "录制时长上限",
+                        options = listOf("10", "20", "30", "40", "50", "60"),
+                        default = "10",
+                        description = "到达时长自动结束录制并落盘（秒）"
+                    ),
                 )
             )
         )

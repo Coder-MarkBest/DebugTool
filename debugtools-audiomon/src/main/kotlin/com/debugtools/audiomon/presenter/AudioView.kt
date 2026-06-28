@@ -1,29 +1,17 @@
 package com.debugtools.audiomon.presenter
 
-/**
- * MVP View interface for the audio monitor module.
- */
+import com.debugtools.audiomon.anomaly.AnomalyEvent
+import com.debugtools.audiomon.anomaly.StreamId
+
+/** MVP View interface for the audio monitor module. */
 interface AudioView {
-    /**
-     * Show a window of raw PCM waveform samples with auto-gain.
-     * @param samples Normalized PCM values (-1..1) for the visible window.
-     * @param rms Current RMS level (0..1), used for auto-gain display.
-     */
-    fun showWaveform(samples: FloatArray, rms: Float)
-
-    /**
-     * Show FFT frequency spectrum magnitudes.
-     * @param magnitudes Normalized magnitude array (0..1).
-     */
-    fun showSpectrum(magnitudes: FloatArray)
-
-    /** Update the status text line. */
+    /** Update the status text line (also used for the recording countdown). */
     fun showStatus(text: String)
 
-    /** Update the toggle button appearance. */
-    fun showMonitoringState(isMonitoring: Boolean)
+    /** Update the record button appearance. */
+    fun showMonitoringState(isRecording: Boolean)
 
-    /** Register callback for the start/stop toggle button. */
+    /** Register callback for the start/stop record button. */
     fun setToggleListener(listener: () -> Unit)
 
     /** Register callback for the report-last-session button. */
@@ -31,4 +19,13 @@ interface AudioView {
 
     /** Show the most recent finished session; reporterConfigured gates the upload button. */
     fun showLastSession(sessionId: String, summary: String, reporterConfigured: Boolean)
+
+    /** Reset both lanes and the anomaly list at the start of a recording. */
+    fun clearLive()
+
+    /** Append one display frame to a stream's lane (envelope uses db, spectrogram uses spectrum). */
+    fun pushLiveFrame(stream: StreamId, db: Float, spectrum: FloatArray)
+
+    /** Mark the latest column of the stream's lane anomalous + append to the anomaly list. */
+    fun showAnomaly(event: AnomalyEvent)
 }

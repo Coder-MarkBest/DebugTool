@@ -2,169 +2,101 @@ package com.debugtools.audiomon.view
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import com.debugtools.audiomon.anomaly.AnomalyEvent
+import com.debugtools.audiomon.anomaly.StreamId
 import com.debugtools.audiomon.presenter.AudioView
 
 /**
- * Container view that composes a start/stop toggle, [WaveformView],
- * and [SpectrumView] vertically. Implements the [AudioView] MVP interface.
+ * Scrollable audio panel: record controls, two stream lanes (A/B) with scrolling
+ * envelope + spectrogram, an accumulating anomaly list, and a collapsible legend.
  */
 @SuppressLint("ViewConstructor")
-class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
+class AudioMonitorView(context: Context) : ScrollView(context), AudioView {
 
     private val density = resources.displayMetrics.density
-    private val waveformView = WaveformView(context)
-    private val spectrumView = SpectrumView(context)
-    private val statusText: TextView
-    private val toggleBtn: TextView
+    private val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val laneA = StreamLaneView(context, StreamId.A)
+    private val laneB = StreamLaneView(context, StreamId.B)
+    private val anomalyList = AnomalyListView(context)
+    private val legend = AnomalyLegendView(context)
+    private val statusText = TextView(context)
+    private val lastSessionText = TextView(context)
+    private val toggleBtn = TextView(context)
+    private val reportBtn = TextView(context)
     private var toggleListener: (() -> Unit)? = null
     private var reportListener: (() -> Unit)? = null
 
-    private val lastSessionText = TextView(context).apply {
-        setTextColor(Color.parseColor("#A0AEC0"))
-        textSize = 12f
-        text = ""
-    }
-
-    private val reportBtn = TextView(context).apply {
-        text = "📤 上报最近会话"
-        setTextColor(Color.WHITE)
-        textSize = 13f
-        typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-        alpha = 0.4f                 // disabled until a session is reportable
-        isClickable = false
-        isFocusable = false
-        setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
-        val bg = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 8f * density
-            setColor(Color.parseColor("#2B6CB0"))
-            setStroke((1 * density).toInt(), Color.parseColor("#63B3ED"))
-        }
-        background = bg
-        setOnClickListener { reportListener?.invoke() }
-    }
+    private fun mx(v: Float) = (v * density).toInt()
 
     init {
-        orientation = VERTICAL
-        setBackgroundColor(Color.parseColor("#1A1A2E"))
+        setBackgroundColor(AudioColors.BG)
 
-        // Start/Stop toggle button
-        toggleBtn = TextView(context).apply {
-            text = "▶ 开始录制"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
-
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8f * density
-                setColor(Color.parseColor("#2D3748"))
-                setStroke((1 * density).toInt(), Color.parseColor("#4A5568"))
-            }
-            background = bg
-
+        toggleBtn.apply {
+            text = "▶ 开始录制"; setTextColor(AudioColors.TEXT); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setPadding(0, mx(10f), 0, mx(10f))
+            background = pill(AudioColors.START)
             setOnClickListener { toggleListener?.invoke() }
         }
-        addView(toggleBtn, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-            setMargins(
-                (16 * density).toInt(), (12 * density).toInt(),
-                (16 * density).toInt(), (8 * density).toInt()
-            )
-        })
-
-        addSectionLabel("振幅波形")
-        addView(waveformView, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        addSectionLabel("频谱分析")
-        addView(spectrumView, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        statusText = TextView(context).apply {
-            setTextColor(Color.parseColor("#A0AEC0"))
-            textSize = 12f
-            setPadding(
-                (16 * density).toInt(),
-                (8 * density).toInt(),
-                (16 * density).toInt(),
-                (8 * density).toInt()
-            )
+        statusText.apply { setTextColor(AudioColors.TEXT_DIM); textSize = 12f; setPadding(mx(2f), mx(8f), mx(2f), mx(8f)) }
+        lastSessionText.apply { setTextColor(AudioColors.TEXT_DIM); textSize = 12f }
+        reportBtn.apply {
+            text = "📤 上报最近会话"; setTextColor(AudioColors.TEXT); textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            alpha = 0.4f; isClickable = false; isFocusable = false
+            setPadding(0, mx(10f), 0, mx(10f))
+            background = pill(AudioColors.REPORT)
+            setOnClickListener { reportListener?.invoke() }
         }
-        addView(statusText, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        addView(lastSessionText, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-            setMargins((16 * density).toInt(), 0, (16 * density).toInt(), (4 * density).toInt())
-        })
-        addView(reportBtn, LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-            setMargins((16 * density).toInt(), (4 * density).toInt(), (16 * density).toInt(), (12 * density).toInt())
-        })
+
+        content.setPadding(mx(12f), mx(12f), mx(12f), mx(12f))
+        content.addView(toggleBtn, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(statusText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(laneA, laneParams())
+        content.addView(laneB, laneParams())
+        content.addView(sectionLabel("⚠ 异常"))
+        content.addView(anomalyList, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(lastSessionText, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = mx(8f) })
+        content.addView(reportBtn, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = mx(4f) })
+        content.addView(legend, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+
+        addView(content)
     }
 
-    private fun addSectionLabel(text: String) {
-        addView(TextView(context).apply {
-            this.text = text
-            setTextColor(Color.parseColor("#A0AEC0"))
-            textSize = 11f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(
-                (16 * density).toInt(),
-                (12 * density).toInt(),
-                0,
-                (4 * density).toInt()
-            )
-        }, LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    private fun laneParams() = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = mx(10f) }
+
+    private fun pill(color: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE; cornerRadius = 10f * density; setColor(color)
     }
 
-    // --- AudioView implementation ---
-
-    override fun showWaveform(samples: FloatArray, rms: Float) =
-        waveformView.setWaveform(samples, rms)
-
-    override fun showSpectrum(magnitudes: FloatArray) =
-        spectrumView.setSpectrum(magnitudes)
-
-    override fun showStatus(text: String) {
-        statusText.text = text
+    private fun sectionLabel(text: String) = TextView(context).apply {
+        this.text = text; setTextColor(AudioColors.TEXT_DIM); textSize = 11f
+        typeface = Typeface.DEFAULT_BOLD; setPadding(0, mx(12f), 0, mx(4f))
     }
 
-    override fun showMonitoringState(isMonitoring: Boolean) {
-        if (isMonitoring) {
-            toggleBtn.text = "⏹ 结束录制"
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8f * density
-                setColor(Color.parseColor("#C53030"))
-                setStroke((1 * density).toInt(), Color.parseColor("#FC8181"))
-            }
-            toggleBtn.background = bg
-        } else {
-            toggleBtn.text = "▶ 开始录制"
-            val bg = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 8f * density
-                setColor(Color.parseColor("#2D3748"))
-                setStroke((1 * density).toInt(), Color.parseColor("#4A5568"))
-            }
-            toggleBtn.background = bg
-        }
+    private fun fmtTime(ms: Long): String {
+        val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60)
     }
 
-    override fun setToggleListener(listener: () -> Unit) {
-        toggleListener = listener
+    // --- AudioView ---
+
+    override fun showStatus(text: String) { statusText.text = text }
+
+    override fun showMonitoringState(isRecording: Boolean) {
+        toggleBtn.text = if (isRecording) "⏹ 结束录制" else "▶ 开始录制"
+        toggleBtn.background = pill(if (isRecording) AudioColors.STOP else AudioColors.START)
     }
 
-    override fun setReportListener(listener: () -> Unit) {
-        reportListener = listener
-    }
+    override fun setToggleListener(listener: () -> Unit) { toggleListener = listener }
+    override fun setReportListener(listener: () -> Unit) { reportListener = listener }
 
     override fun showLastSession(sessionId: String, summary: String, reporterConfigured: Boolean) {
         lastSessionText.text = "最近会话: $sessionId\n$summary" +
@@ -172,5 +104,19 @@ class AudioMonitorView(context: Context) : LinearLayout(context), AudioView {
         reportBtn.alpha = if (reporterConfigured) 1f else 0.4f
         reportBtn.isClickable = reporterConfigured
         reportBtn.isFocusable = reporterConfigured
+    }
+
+    override fun clearLive() { laneA.clear(); laneB.clear(); anomalyList.clear() }
+
+    override fun pushLiveFrame(stream: StreamId, db: Float, spectrum: FloatArray) {
+        (if (stream == StreamId.A) laneA else laneB).pushFrame(db, spectrum)
+    }
+
+    override fun showAnomaly(event: AnomalyEvent) {
+        (if (event.stream == StreamId.A) laneA else laneB).markLastAnomaly()
+        anomalyList.addEntry(
+            "${fmtTime(event.timeMs)} · [${event.stream.label}] ${event.type.label} · ${event.detail}",
+            AudioColors.anomalyTypeColor(event.type)
+        )
     }
 }
