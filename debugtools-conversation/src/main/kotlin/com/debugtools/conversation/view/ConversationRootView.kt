@@ -3,8 +3,7 @@ package com.debugtools.conversation.view
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
+
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout

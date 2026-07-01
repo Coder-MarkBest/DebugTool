@@ -1,13 +1,9 @@
 package com.debugtools.conversation.recorder
 
-import com.debugtools.conversation.protocol.ConversationSession
 import com.debugtools.conversation.protocol.ConversationTurn
-import com.debugtools.conversation.protocol.StageStatus
 import com.debugtools.conversation.protocol.TurnOutcome
 import com.debugtools.conversation.protocol.TurnStage
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConversationRecorderTest {

@@ -30,9 +30,8 @@ class ConversationRecorder(
     }
 
     /**
-     * Safety-net: if host never calls endSession(), finalizes with wall-clock time
-     * derived from the last turn's endUptimeMs (approximate fallback). Never overrides
-     * an explicit endSession().
+     * Safety-net: if host never calls endSession(), finalizes with the current
+     * clock time. Never overrides an explicit endSession().
      */
     fun finalizeFallback() = synchronized(lock) {
         if (endedAtWallMs == null) { endedAtWallMs = clock() }

@@ -6,7 +6,7 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
+
 import com.debugtools.conversation.protocol.ConversationSession
 import com.debugtools.conversation.protocol.ConversationTurn
 import com.debugtools.conversation.recorder.ConversationRecorder
@@ -44,7 +44,7 @@ object ConversationTracer {
     private fun newRecorder(sessionId: String) = ConversationRecorder(
         sessionId = sessionId,
         startedAtWallMs = System.currentTimeMillis(),
-        clock = { SystemClock.uptimeMillis() }
+        clock = { System.currentTimeMillis() }
     )
 
     /** Wire persistence + the onResume fallback. Idempotent. */
