@@ -14,7 +14,7 @@ class ConversationStore(
 ) {
     fun save(session: ConversationSession) {
         dir.mkdirs()
-        val safeId = session.sessionId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val safeId = session.sessionId.replace(Regex("[^a-zA-Z0-9_-]"), "_")
         val name = "%013d_%s.json".format(session.startedAtWallMs, safeId)
         File(dir, name).writeText(session.toJson().toString())
         evict()
