@@ -14,7 +14,8 @@ class StartupStore(
 ) {
     fun save(session: StartupSession) {
         dir.mkdirs()
-        val name = "%013d_%s.json".format(session.startedAtWallMs, session.sessionId)
+        val safeId = session.sessionId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        val name = "%013d_%s.json".format(session.startedAtWallMs, safeId)
         File(dir, name).writeText(session.toJson().toString())
         evict()
     }
