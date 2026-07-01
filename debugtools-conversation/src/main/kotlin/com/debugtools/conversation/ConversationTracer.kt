@@ -60,6 +60,7 @@ object ConversationTracer {
         synchronized(lock) {
             if (recorder != null && recorder?.snapshot()?.sessionId == sessionId) {
                 recorder?.startSession(metadata)
+                persisted = false  // re-arm so endSession → persist() actually saves
                 return
             }
             // New session: persist the old one if any, then create fresh
