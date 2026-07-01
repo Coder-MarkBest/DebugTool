@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.widget.Button
 import android.widget.LinearLayout
@@ -18,6 +19,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.debugtools.audiomon.AudioMonitorModule
 import com.debugtools.startup.StartupMonitorModule
+import com.debugtools.conversation.ConversationMonitorModule
+import com.debugtools.conversation.ConversationTracer
+import com.debugtools.conversation.protocol.ConversationTurn
+import com.debugtools.conversation.protocol.StageStatus
+import com.debugtools.conversation.protocol.TurnOutcome
+import com.debugtools.conversation.protocol.TurnStage
 import com.debugtools.core.DebugTools
 import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
@@ -75,6 +82,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnFeedAudio: Button
     private lateinit var btnGenStartup: Button
     private lateinit var btnGenTraffic: Button
+    private lateinit var btnGenConversation: Button
     private lateinit var logView: TextView
 
     // 模拟语音助手的一次完整对话流程
@@ -190,6 +198,13 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(btnGenStartup)
 
+        btnGenConversation = Button(this).apply {
+            text = "💬 生成示例对话链路（3 轮）"
+            isEnabled = false
+            setOnClickListener { generateSampleConversation() }
+        }
+        root.addView(btnGenConversation)
+
         logView = TextView(this).apply {
             text = "--- 日志 ---"
             textSize = 11f
@@ -253,6 +268,7 @@ class MainActivity : AppCompatActivity() {
                 .register(timelineModule)
                 .register(audioModule)
                 .register(StartupMonitorModule())
+                .register(ConversationMonitorModule())
                 .register(
                     GeneralModule.builder(this)
                         .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
@@ -279,6 +295,8 @@ class MainActivity : AppCompatActivity() {
             btnFeedAudio.isEnabled = true
             btnGenStartup.isEnabled = true
             btnGenTraffic.isEnabled = true
+            btnGenConversation.isEnabled = true
+            ConversationTracer.init(applicationContext)
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路")
         } catch (e: Exception) {
@@ -417,6 +435,66 @@ class MainActivity : AppCompatActivity() {
             toast("1秒后抛出异常，观察 DebugTools 是否捕获 CrashInfo...")
             delay(1000)
             throw RuntimeException("模拟崩溃：ASR 引擎内部 NullPointerException at AudioProcessor.process()")
+        }
+    }
+
+    /** Write 3 varied sample conversation turns to the tracer. */
+    private fun generateSampleConversation() {
+        appendLog("→ 写入示例对话链路…")
+        lifecycleScope.launch(Dispatchers.IO) {
+            ConversationTracer.startSession("demo-conv-1", mapOf("scene" to "导航"))
+
+            // Turn 1: success
+            ConversationTracer.submitTurn(ConversationTurn(
+                turnId = "demo-t1", turnIndex = 1, sessionId = "demo-conv-1",
+                startUptimeMs = SystemClock.uptimeMillis(),
+                endUptimeMs = SystemClock.uptimeMillis() + 800,
+                userInput = "导航到最近的加油站",
+                stages = listOf(
+                    TurnStage("唤醒", 0, 200, StageStatus.SUCCESS, null, null, null, "main"),
+                    TurnStage("ASR", 200, 500, StageStatus.SUCCESS, "[audio]", "导航到最近的加油站", null, "asr-1"),
+                    TurnStage("NLU", 500, 550, StageStatus.SUCCESS, "导航到最近的加油站", """{"intent":"导航","slots":{"dest":"加油站"}}""", null, "nlu-1"),
+                    TurnStage("TTS", 550, 750, StageStatus.SUCCESS, null, "已为您找到最近的加油站", null, "tts-1"),
+                    TurnStage("执行", 750, 800, StageStatus.SUCCESS, null, "OK", null, "exec-1")
+                ),
+                outcome = TurnOutcome.SUCCESS,
+                tags = listOf("导航")
+            ))
+
+            // Turn 2: NLU failure
+            ConversationTracer.submitTurn(ConversationTurn(
+                turnId = "demo-t2", turnIndex = 2, sessionId = "demo-conv-1",
+                startUptimeMs = SystemClock.uptimeMillis(),
+                endUptimeMs = SystemClock.uptimeMillis() + 600,
+                userInput = "打开空调",
+                stages = listOf(
+                    TurnStage("唤醒", 0, 150, StageStatus.SUCCESS, null, null, null, "main"),
+                    TurnStage("ASR", 150, 400, StageStatus.SUCCESS, "[audio]", "打开空调", null, "asr-1"),
+                    TurnStage("NLU", 400, 500, StageStatus.FAILED, "打开空调", null, "IntentNotFoundException: 未知意图", "nlu-1"),
+                    TurnStage("TTS", 500, 600, StageStatus.SKIPPED, null, null, null, "tts-1")
+                ),
+                outcome = TurnOutcome.FAILED,
+                tags = listOf("空调")
+            ))
+
+            // Turn 3: timeout + slow stage
+            ConversationTracer.submitTurn(ConversationTurn(
+                turnId = "demo-t3", turnIndex = 3, sessionId = "demo-conv-1",
+                startUptimeMs = SystemClock.uptimeMillis(),
+                endUptimeMs = SystemClock.uptimeMillis() + 2000,
+                userInput = "播放周杰伦的歌",
+                stages = listOf(
+                    TurnStage("唤醒", 0, 100, StageStatus.SUCCESS, null, null, null, "main"),
+                    TurnStage("ASR", 100, 400, StageStatus.SUCCESS, "[audio]", "播放周杰伦的歌", null, "asr-1"),
+                    TurnStage("NLU", 400, 450, StageStatus.SUCCESS, "播放周杰伦的歌", """{"intent":"播放音乐","slots":{"artist":"周杰伦"}}""", null, "nlu-1"),
+                    TurnStage("TTS", 450, 1350, StageStatus.SUCCESS, null, "好的，为您播放周杰伦", null, "tts-1")
+                ),
+                outcome = TurnOutcome.TIMEOUT,
+                tags = listOf("音乐")
+            ))
+
+            ConversationTracer.endSession("demo-conv-1")
+            runOnUiThread { appendLog("✅ 已写入 3 轮示例对话 — 打开「对话链路」Tab 查看") }
         }
     }
 
