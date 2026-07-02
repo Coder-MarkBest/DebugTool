@@ -21,6 +21,8 @@ import com.debugtools.audiomon.AudioMonitorModule
 import com.debugtools.startup.StartupMonitorModule
 import com.debugtools.conversation.ConversationMonitorModule
 import com.debugtools.conversation.ConversationTracer
+import com.debugtools.stability.StabilityModule
+import com.debugtools.stability.StabilityMonitor
 import com.debugtools.conversation.protocol.ConversationTurn
 import com.debugtools.conversation.protocol.StageStatus
 import com.debugtools.conversation.protocol.TurnOutcome
@@ -131,13 +133,23 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(Button(this).apply {
+            text = "①c 刷新权限状态"
+            setOnClickListener {
+                val canDraw = Settings.canDrawOverlays(this@MainActivity)
+                btnInit.isEnabled = !debugToolsInitialized
+                toast("悬浮窗权限: $canDraw, 初始化状态: $debugToolsInitialized")
+                appendLog("手动刷新: canDrawOverlays=$canDraw, initialized=$debugToolsInitialized")
+            }
+        })
+
+        root.addView(Button(this).apply {
             text = "①b 授权录音权限"
             setOnClickListener { requestAudioPermission() }
         })
 
         btnInit = Button(this).apply {
             text = "② 初始化 DebugTools"
-            isEnabled = Settings.canDrawOverlays(this@MainActivity)
+            isEnabled = true
             setOnClickListener { initDebugTools() }
         }
         root.addView(btnInit)
@@ -218,7 +230,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        btnInit.isEnabled = Settings.canDrawOverlays(this) && !debugToolsInitialized
+        btnInit.isEnabled = !debugToolsInitialized
     }
 
     private fun requestOverlayPermission() {
@@ -269,6 +281,7 @@ class MainActivity : AppCompatActivity() {
                 .register(audioModule)
                 .register(StartupMonitorModule())
                 .register(ConversationMonitorModule())
+                .register(StabilityModule())
                 .register(
                     GeneralModule.builder(this)
                         .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
@@ -297,6 +310,7 @@ class MainActivity : AppCompatActivity() {
             btnGenTraffic.isEnabled = true
             btnGenConversation.isEnabled = true
             ConversationTracer.init(applicationContext)
+            StabilityMonitor.init(applicationContext, listOf("com.debugtools.sample", "system_server"))
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
             appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路")
         } catch (e: Exception) {
