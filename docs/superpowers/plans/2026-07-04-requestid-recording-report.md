@@ -19,6 +19,7 @@
 - `report.html` must work offline and link to adjacent raw artifacts.
 - No cloud upload, PDF report, complex charting library, full Material rewrite, or independent-process audio stream recording.
 - Use TDD for behavior changes; run targeted tests first, then `./gradlew test`.
+- A connected emulator is available; after implementation, update the sample demo if needed and verify every feasible capability on the emulator.
 
 ---
 
@@ -1648,11 +1649,13 @@ git commit -m "feat(core): record modules from overlay"
 
 ---
 
-## Task 8: Integration Documentation and Final Verification
+## Task 8: Integration Documentation, Demo Update, and Final Verification
 
 **Files:**
 - Create: `docs/INTEGRATION.md`
 - Modify: `CLAUDE.md`
+- Modify: `app/src/main/kotlin/com/debugtools/sample/MainActivity.kt` if the demo needs buttons/sample data for VoiceTrace or global recording.
+- Modify: `app/src/main/kotlin/com/debugtools/sample/SampleApplication.kt` if startup or request trace sample events need early app lifecycle hooks.
 - Modify: `AGENTS.md` only if it is intended to be tracked; otherwise leave it untracked.
 
 **Interfaces:**
@@ -1727,7 +1730,22 @@ Use the overlay recording bar to start and stop a recording. Reports are saved u
 
 Replace the old four-module architecture section with the current module list from `settings.gradle.kts`.
 
-- [ ] **Step 3: Run all verification**
+- [ ] **Step 3: Update sample demo if needed**
+
+Review the sample app after implementation. If the requestId-first trace or recording UI is not demonstrable from existing controls, add a deterministic demo flow:
+
+```kotlin
+val requestId = "demo-${System.currentTimeMillis()}"
+VoiceTrace.begin(requestId, "AsrBegin")
+VoiceTrace.end(requestId, "AsrEnd")
+VoiceTrace.instant(requestId, "NluBegin")
+VoiceTrace.instant(requestId, "NluEnd")
+VoiceTrace.instant(name = "RequestExit")
+```
+
+The demo must let a tester initialize DebugTools, generate at least one request trace, start and stop global recording, and find the saved `report.html`.
+
+- [ ] **Step 4: Run local verification**
 
 Run: `./gradlew test`
 
@@ -1737,16 +1755,51 @@ Run: `./gradlew assembleDebug`
 
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 4: Check git status**
+- [ ] **Step 5: Run emulator verification where feasible**
+
+Confirm a device is connected:
+
+```bash
+adb devices
+```
+
+Expected: one emulator or device in `device` state.
+
+Install and launch the sample app:
+
+```bash
+./gradlew :app:installDebug
+adb shell monkey -p com.debugtools.sample 1
+```
+
+Verify manually or through logcat/screenshot where possible:
+
+- DebugTools initializes without crashing.
+- The overlay can enter expanded mode when overlay permission is already granted.
+- The sample can generate a request trace and the conversation/request UI shows it.
+- Starting recording freezes module interactions.
+- Stopping recording saves `debugtools-recordings/<recordingId>/report.html`.
+- Startup demo data shows initialization success/failure records.
+- Stability module shows permission-limited state rather than blocking or crashing on a non-system emulator.
+
+Collect evidence:
+
+```bash
+adb logcat -d | grep -E "DebugTools|VoiceTrace|Recording|Stability" | tail -80
+```
+
+If overlay permission is not granted and cannot be granted automatically, record that limitation and still verify install/build/logcat paths.
+
+- [ ] **Step 6: Check git status**
 
 Run: `git status --short`
 
 Expected: only intended changes are present. If `AGENTS.md` and `REVIEW_WEEKLY.md` remain untracked and unrelated, do not stage them.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add docs/INTEGRATION.md CLAUDE.md
+git add docs/INTEGRATION.md CLAUDE.md app/src/main/kotlin/com/debugtools/sample
 git commit -m "docs: update debugtools integration guide"
 ```
 
