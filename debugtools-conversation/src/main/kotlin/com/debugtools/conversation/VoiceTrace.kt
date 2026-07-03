@@ -42,5 +42,6 @@ object VoiceTrace {
 
     internal fun snapshot() = recorder?.snapshot()
     internal fun currentProfile() = profile
+    internal fun currentRecorder() = recorder
     internal fun context() = appContext
 }
