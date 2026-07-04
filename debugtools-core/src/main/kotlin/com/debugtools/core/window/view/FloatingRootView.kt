@@ -2,7 +2,6 @@ package com.debugtools.core.window.view
 
 import android.content.Context
 import android.graphics.Color
-import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.view.Gravity
@@ -32,7 +31,10 @@ internal class FloatingRootView(
     private val windowManager: WindowManager,
     private val layoutParams: WindowManager.LayoutParams,
     private val recordingManager: DebugRecordingManager,
-    private val onResizeExpandedBy: (Int) -> Unit = {}
+    private var expandedPanelWidth: Int,
+    private val onResizeStart: () -> Unit = {},
+    private val onResizeExpandedBy: (Int) -> Unit = {},
+    private val onResizeEnd: () -> Unit = {}
 ) : FrameLayout(context) {
 
     private val expandedView = ExpandedView(context)
@@ -46,11 +48,13 @@ internal class FloatingRootView(
     )
     private var modules: List<DebugModule> = emptyList()
     private var lastSavedPath: String? = null
-    private var resizeLastRawX: Float? = null
 
     init {
         expandedView.onMinimizeClick = { modeManager.setMode(DisplayMode.MINIMIZED) }
         expandedView.onBriefClick = { modeManager.setMode(DisplayMode.BRIEF) }
+        expandedView.onResizeStart = { onResizeStart() }
+        expandedView.onResizeDrag = { onResizeExpandedBy(it) }
+        expandedView.onResizeEnd = { onResizeEnd() }
         minimizedView.onClick = { modeManager.setMode(DisplayMode.EXPANDED) }
         minimizedView.onLongClick = { modeManager.setMode(DisplayMode.BRIEF) }
         briefView.onClick = { modeManager.setMode(DisplayMode.EXPANDED) }
@@ -65,11 +69,23 @@ internal class FloatingRootView(
         refreshBriefItems()
     }
 
+    fun setExpandedPanelWidth(widthPx: Int) {
+        expandedPanelWidth = widthPx
+        if (modeManager.currentMode == DisplayMode.EXPANDED) {
+            updateExpandedPanelWidth()
+        }
+    }
+
     private fun applyMode(mode: DisplayMode) {
         removeAllViews()
         val fill = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         when (mode) {
-            DisplayMode.EXPANDED  -> addView(buildExpandedContainer(), fill)
+            DisplayMode.EXPANDED  -> addView(
+                buildExpandedContainer(),
+                LayoutParams(expandedPanelWidth, LayoutParams.MATCH_PARENT).apply {
+                    gravity = Gravity.END
+                }
+            )
             DisplayMode.MINIMIZED -> addView(minimizedView, fill)
             DisplayMode.BRIEF     -> { refreshBriefItems(); addView(briefView, fill) }
         }
@@ -77,15 +93,6 @@ internal class FloatingRootView(
 
     private fun buildExpandedContainer(): View {
         val active = recordingManager.isActive()
-        val shell = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(DebugToolsTheme.background)
-        }
-        shell.addView(buildResizeHandle(), LinearLayout.LayoutParams(
-            DebugToolsTheme.dp(resources, 10),
-            LinearLayout.LayoutParams.MATCH_PARENT
-        ))
-
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(DebugToolsTheme.background)
@@ -113,39 +120,17 @@ internal class FloatingRootView(
             0,
             1f
         ))
-        shell.addView(container, LinearLayout.LayoutParams(
-            0,
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            1f
-        ))
-        return shell
+        return container
     }
 
-    private fun buildResizeHandle(): View =
-        View(context).apply {
-            setBackgroundColor(DebugToolsTheme.divider)
-            contentDescription = "拖拽调整面板宽度"
-            setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        resizeLastRawX = event.rawX
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val last = resizeLastRawX ?: event.rawX
-                        val delta = (last - event.rawX).toInt()
-                        resizeLastRawX = event.rawX
-                        onResizeExpandedBy(delta)
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        resizeLastRawX = null
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }
+    private fun updateExpandedPanelWidth() {
+        val panel = getChildAt(0) ?: return
+        val params = panel.layoutParams as? LayoutParams ?: return
+        if (params.width == expandedPanelWidth && params.gravity == Gravity.END) return
+        params.width = expandedPanelWidth
+        params.gravity = Gravity.END
+        panel.layoutParams = params
+    }
 
     private fun buildInteractionBlocker(): View =
         TextView(context).apply {

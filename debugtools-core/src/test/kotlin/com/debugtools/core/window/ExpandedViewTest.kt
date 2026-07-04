@@ -41,6 +41,30 @@ class ExpandedViewTest {
         assertEquals(1f, (content.layoutParams as LinearLayout.LayoutParams).weight)
     }
 
+    @Test fun `tab rail accepts resize drag callback`() {
+        var totalDelta = 0
+        val view = ExpandedView(context)
+        view.onResizeDrag = { totalDelta += it }
+
+        view.dispatchTabRailResizeDragForTest(48)
+
+        assertEquals(48, totalDelta)
+    }
+
+    @Test fun `tab rail emits resize start drag and end callbacks`() {
+        val events = mutableListOf<String>()
+        val view = ExpandedView(context)
+        view.onResizeStart = { events += "start" }
+        view.onResizeDrag = { events += "drag:$it" }
+        view.onResizeEnd = { events += "end" }
+
+        view.dispatchTabRailResizeStartForTest()
+        view.dispatchTabRailResizeDragForTest(24)
+        view.dispatchTabRailResizeEndForTest()
+
+        assertEquals(listOf("start", "drag:24", "end"), events)
+    }
+
     @Test fun `vertical tab rail keeps tab controls compact when content grows`() {
         val view = ExpandedView(context)
         view.setModules(listOf(FakeModule("conversation", "对话链路")))

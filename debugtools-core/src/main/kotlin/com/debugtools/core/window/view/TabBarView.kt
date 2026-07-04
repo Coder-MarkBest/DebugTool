@@ -2,6 +2,8 @@ package com.debugtools.core.window.view
 
 import android.content.Context
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -12,7 +14,15 @@ internal class TabBarView(context: Context) : ScrollView(context) {
         orientation = LinearLayout.VERTICAL
     }
     private var selectedIndex = 0
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var downRawX = 0f
+    private var downRawY = 0f
+    private var lastRawX = 0f
+    private var resizing = false
     var onTabSelected: ((Int) -> Unit)? = null
+    var onResizeStart: (() -> Unit)? = null
+    var onResizeDrag: ((Int) -> Unit)? = null
+    var onResizeEnd: (() -> Unit)? = null
 
     init {
         isFillViewport = false
@@ -59,6 +69,54 @@ internal class TabBarView(context: Context) : ScrollView(context) {
 
     internal fun firstTabForTest(): TextView? =
         container.getChildAt(0) as? TextView
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downRawX = event.rawX
+                downRawY = event.rawY
+                lastRawX = event.rawX
+                resizing = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dxFromDown = event.rawX - downRawX
+                val dyFromDown = event.rawY - downRawY
+                if (!resizing && kotlin.math.abs(dxFromDown) > touchSlop &&
+                    kotlin.math.abs(dxFromDown) > kotlin.math.abs(dyFromDown)) {
+                    resizing = true
+                    onResizeStart?.invoke()
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                }
+                if (resizing) {
+                    val delta = (lastRawX - event.rawX).toInt()
+                    lastRawX = event.rawX
+                    if (delta != 0) onResizeDrag?.invoke(delta)
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (resizing) {
+                    resizing = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    onResizeEnd?.invoke()
+                    return true
+                }
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    internal fun dispatchResizeDragForTest(deltaPx: Int) {
+        onResizeDrag?.invoke(deltaPx)
+    }
+
+    internal fun dispatchResizeStartForTest() {
+        onResizeStart?.invoke()
+    }
+
+    internal fun dispatchResizeEndForTest() {
+        onResizeEnd?.invoke()
+    }
 
     private fun dp(value: Int): Int = DebugToolsTheme.dp(resources, value)
 }

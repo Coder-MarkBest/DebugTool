@@ -1,6 +1,7 @@
 package com.debugtools.core.window
 
 import android.content.Context
+import android.view.Gravity
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
 import com.debugtools.core.recording.DebugRecordingManager
@@ -62,6 +63,66 @@ class FloatingWindowManagerTest {
 
         manager.resizeExpandedBy(10_000)
         assertEquals(manager.maxExpandedWidthForTest(), manager.expandedWidthForTest())
+    }
+
+    @Test fun `expanded resize keeps window anchored to screen right edge`() {
+        manager.init(emptyList())
+        val displayWidth = context.resources.displayMetrics.widthPixels
+
+        manager.resizeExpandedBy(300)
+
+        val params = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        assertEquals(Gravity.TOP or Gravity.START, params.gravity)
+        assertEquals(displayWidth, params.x + params.width)
+    }
+
+    @Test fun `expanded window only covers visible panel when not dragging`() {
+        manager.init(emptyList())
+        manager.resizeExpandedBy(300)
+
+        manager.endExpandedResizeDragForTest()
+
+        val params = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        assertEquals(manager.expandedWidthForTest(), params.width)
+        assertEquals(context.resources.displayMetrics.widthPixels, params.x + params.width)
+    }
+
+    @Test fun `expanded resize start expands touch window to max width`() {
+        manager.init(emptyList())
+        val displayWidth = context.resources.displayMetrics.widthPixels
+
+        manager.beginExpandedResizeDragForTest()
+
+        val during = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        assertEquals(manager.maxExpandedWidthForTest(), during.width)
+        assertEquals(displayWidth, during.x + during.width)
+    }
+
+    @Test fun `expanded resize end shrinks touch window to final visible width`() {
+        manager.init(emptyList())
+        manager.beginExpandedResizeDragForTest()
+        manager.resizeExpandedBy(300)
+
+        manager.endExpandedResizeDragForTest()
+
+        val params = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        assertEquals(manager.expandedWidthForTest(), params.width)
+        assertEquals(context.resources.displayMetrics.widthPixels, params.x + params.width)
+    }
+
+    @Test fun `expanded drag keeps max touch window stable until release`() {
+        manager.init(emptyList())
+
+        manager.beginExpandedResizeDragForTest()
+        val before = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        val beforeWidth = before.width
+        val beforeX = before.x
+
+        manager.resizeExpandedBy(300)
+
+        val during = shadowWm().views.first().layoutParams as WindowManager.LayoutParams
+        assertEquals(beforeWidth, during.width)
+        assertEquals(beforeX, during.x)
     }
 
     @Test fun `resize preserves minimized dimensions`() {

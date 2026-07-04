@@ -18,6 +18,10 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
     var onMinimizeClick: (() -> Unit)? = null
     /** Invoked when the user taps the brief-mode button. */
     var onBriefClick: (() -> Unit)? = null
+    /** Invoked when the user horizontally drags the tab rail. */
+    var onResizeDrag: ((Int) -> Unit)? = null
+    var onResizeStart: (() -> Unit)? = null
+    var onResizeEnd: (() -> Unit)? = null
 
     init {
         orientation = HORIZONTAL
@@ -28,6 +32,9 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
             setBackgroundColor(DebugToolsTheme.panel)
         }
         tabBar.onTabSelected = { showContent(it) }
+        tabBar.onResizeStart = { onResizeStart?.invoke() }
+        tabBar.onResizeDrag = { onResizeDrag?.invoke(it) }
+        tabBar.onResizeEnd = { onResizeEnd?.invoke() }
         rail.addView(
             tabBar,
             LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
@@ -74,4 +81,16 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
     }
 
     internal fun tabRailWidthPxForTest(): Int = tabRailWidthPx
+
+    internal fun dispatchTabRailResizeDragForTest(deltaPx: Int) {
+        tabBar.dispatchResizeDragForTest(deltaPx)
+    }
+
+    internal fun dispatchTabRailResizeStartForTest() {
+        tabBar.dispatchResizeStartForTest()
+    }
+
+    internal fun dispatchTabRailResizeEndForTest() {
+        tabBar.dispatchResizeEndForTest()
+    }
 }
