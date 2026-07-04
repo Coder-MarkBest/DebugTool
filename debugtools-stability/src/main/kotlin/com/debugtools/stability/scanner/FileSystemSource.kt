@@ -23,31 +23,18 @@ class FileSystemSource : CrashSource {
             dir.listFiles()?.filter { it.isFile && mapping.filePattern.containsMatchIn(it.name) }?.forEach { file ->
                 try {
                     val text = file.readText().take(16384) // cap at 16KB per file
-                    val procName = extractProcessName(text)
-                    if (procName.isEmpty()) return@forEach
+                    val procName = CrashTextParser.extractProcessName(text) ?: return@forEach
                     entries.add(CrashEntry(
                         type = mapping.type,
                         processName = procName,
                         timestamp = file.lastModified(),
                         sourcePath = file.absolutePath,
                         stackTrace = text,
-                        pid = extractPid(text)
+                        pid = CrashTextParser.extractPid(text)
                     ))
                 } catch (_: Exception) {}
             }
         }
         return entries
-    }
-
-    /** "Process: com.example.app" → "com.example.app" */
-    private fun extractProcessName(text: String): String {
-        val match = Regex("Process:\\s*(\\S+)").find(text) ?: return ""
-        return match.groupValues[1]
-    }
-
-    /** "PID: 12345" → 12345 */
-    private fun extractPid(text: String): Int? {
-        val match = Regex("PID:\\s*(\\d+)").find(text) ?: return null
-        return match.groupValues[1].toIntOrNull()
     }
 }

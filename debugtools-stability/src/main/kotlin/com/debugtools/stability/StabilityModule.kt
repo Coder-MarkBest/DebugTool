@@ -40,7 +40,8 @@ class StabilityModule : DebugModule {
     }
 
     override fun createContentView(context: Context): View {
-        rootView = StabilityRootView(context)
+        rootView = StabilityRootView(context) { refreshAsync() }
+        refreshAsync()
         return rootView!!
     }
 
@@ -58,9 +59,24 @@ class StabilityModule : DebugModule {
         timerJob = scope.launch {
             while (isActive) {
                 delay(60_000L)
-                withContext(Dispatchers.Main) {
-                    rootView?.refresh()
-                }
+                refreshAsync()
+            }
+        }
+    }
+
+    private fun refreshAsync() {
+        val view = rootView ?: return
+        searchJob?.cancel()
+        searchJob = scope.launch {
+            withContext(Dispatchers.Main) { view.renderLoading() }
+            val result = runCatching {
+                StabilityMonitor.processAliveStatus() to StabilityMonitor.searchNow()
+            }
+            withContext(Dispatchers.Main) {
+                result.fold(
+                    onSuccess = { (status, entries) -> view.renderData(status, entries) },
+                    onFailure = { error -> view.renderError(error.message ?: "unknown error") }
+                )
             }
         }
     }
