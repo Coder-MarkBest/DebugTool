@@ -70,9 +70,28 @@ class NetworkCaptureModule private constructor(
     private var scope: CoroutineScope? = null
     private var rootView: NetworkCaptureRootView? = null
 
+    data class NetworkCaptureSummary(
+        val httpCount: Int,
+        val webSocketCount: Int,
+        val webSocketFrameCount: Int,
+        val errorCount: Int
+    )
+
     fun httpInterceptor(): Interceptor = CapturingInterceptor(repository, config, correlator)
 
     fun eventListenerFactory(): EventListener.Factory = TimingEventListener.Factory(repository, correlator)
+
+    fun captureSummary(): NetworkCaptureSummary {
+        val snap = repository.snapshot()
+        val errors = snap.httpRecords.count { it.failure != null || it.responseCode >= 400 } +
+            snap.webSocketSessions.count { it.failure != null }
+        return NetworkCaptureSummary(
+            httpCount = snap.httpRecords.size,
+            webSocketCount = snap.webSocketSessions.size,
+            webSocketFrameCount = snap.webSocketSessions.sumOf { it.frames.size },
+            errorCount = errors
+        )
+    }
 
     fun newWebSocket(
         client: OkHttpClient,

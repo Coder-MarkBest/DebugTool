@@ -33,7 +33,7 @@ Four Gradle library modules:
 
 ```
 debugtools-core          ← mandatory, all others depend on this
-debugtools-network       ← optional: network type, ping, quality
+debugtools-network       ← optional: visible network tab; can host OkHttp capture
 debugtools-timeline      ← optional: event timeline with detail expand
 debugtools-general       ← optional: availability checks; public entry point is AvailabilityModule
 ```
@@ -74,4 +74,5 @@ com.debugtools.core
 - `ScopedStorage.clear()` is a no-op — `SettingsStorage` has no key enumeration API.
 - AIDL parcelable types require `.aidl` declaration files alongside the interface files in `src/main/aidl/`.
 - `debugtools-general` has been replaced conceptually by availability checks; keep API additions business-agnostic (`AvailabilityItem` / `AvailabilityStatus`) and avoid voice-assistant-specific dependency names in SDK types.
+- `debugtools-network` is the user-facing Network tab. If OkHttp capture is needed, host `NetworkCaptureModule` through `NetworkModule.builder().capture(capture)` instead of registering a separate capture tab.
 - `DebugTools` singleton — calling `build()` twice orphans the old instance (by design for simplicity).

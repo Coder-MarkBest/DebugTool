@@ -7,11 +7,12 @@ DebugTools is an Android voice-assistant debug SDK shown as an overlay. The core
 - `debugtools-core`: required overlay, settings, storage, process mode, and global recording.
 - `debugtools-conversation`: requestId-first voice trace timeline and recording artifacts.
 - `debugtools-startup`: app startup steps, success/failure state, and startup recording export.
-- `debugtools-okhttp-capture`: OkHttp HTTP/WebSocket capture and summary export.
+- `debugtools-okhttp-capture`: OkHttp HTTP/WebSocket capture internals, summary export, and interceptors.
+- `debugtools-network`: the visible Network tab. It can show network quality alone or host `NetworkCaptureModule` so quality and capture share one tab and one overview item.
 - `debugtools-perfmon`: process CPU/RSS/thread time series and export.
 - `debugtools-audiomon`: explicit audio monitor; global recording exports current audio state only.
 - `debugtools-stability`: process alive status, DropBox/file crash scan, and export.
-- `debugtools-network`, `debugtools-timeline`: network quality and event timeline utilities.
+- `debugtools-timeline`: event timeline utility.
 - `debugtools-general`: availability checks. The public entry point is `AvailabilityModule`; built-in checks cover process liveness and network availability, and host apps can provide abstract external availability items.
 
 ## Permissions
@@ -53,7 +54,12 @@ VoiceTrace.init(applicationContext, voiceTraceProfile {
 
 DebugTools.builder(context)
     .processMode(ProcessMode.ATTACHED)
-    .register(capture)
+    .register(
+        NetworkModule.builder()
+            .gateway("8.8.8.8")
+            .capture(capture)
+            .build()
+    )
     .register(ConversationMonitorModule())
     .register(StartupMonitorModule())
     .register(PerfMonitorModule.builder().addProcessByName(context.packageName).build())
@@ -73,6 +79,15 @@ DebugTools.builder(context)
             }
             .build()
     )
+    .build()
+```
+
+`NetworkCaptureModule` is not registered as a separate tab when hosted by `NetworkModule`. Host code still uses the same capture object for OkHttp:
+
+```kotlin
+val client = OkHttpClient.Builder()
+    .addInterceptor(capture.httpInterceptor())
+    .eventListenerFactory(capture.eventListenerFactory())
     .build()
 ```
 
@@ -143,6 +158,8 @@ debugtools_perfmon/perf-series.json
 audiomon/audio-state.json
 stability/stability.json
 ```
+
+When OkHttp capture is hosted by `NetworkModule`, the report groups its summary under `debugtools_network`; the raw JSON file still lives in the capture artifact directory for compatibility.
 
 `report.html` is offline and summarizes module artifacts and issues. Raw JSON files are preserved next to it for deeper analysis.
 

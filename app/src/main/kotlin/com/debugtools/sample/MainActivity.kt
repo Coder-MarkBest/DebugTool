@@ -279,10 +279,14 @@ class MainActivity : AppCompatActivity() {
             VoiceTrace.init(applicationContext, sampleVoiceTraceProfile())
             DebugTools.builder(this)
                 .processMode(ProcessMode.ATTACHED)
-                .register(captureModule)
                 .register(perfModule)
                 .register(voiceModule)
-                .register(NetworkModule.create("8.8.8.8"))
+                .register(
+                    NetworkModule.builder()
+                        .gateway("8.8.8.8")
+                        .capture(captureModule)
+                        .build()
+                )
                 .register(timelineModule)
                 .register(audioModule)
                 .register(StartupMonitorModule())
@@ -318,7 +322,7 @@ class MainActivity : AppCompatActivity() {
             btnGenConversation.isEnabled = true
             StabilityMonitor.init(applicationContext, listOf("com.debugtools.sample", "system_server"))
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
+            appendLog("   已注册模块: 语音助手 / 网络（质量 + 抓包） / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }

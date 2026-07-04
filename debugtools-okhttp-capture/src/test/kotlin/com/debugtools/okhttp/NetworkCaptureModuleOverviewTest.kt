@@ -19,6 +19,18 @@ class NetworkCaptureModuleOverviewTest {
         assertTrue(item.primaryText.contains("1错误"))
     }
 
+    @Test fun `capture summary reports counts for host modules`() {
+        val module = NetworkCaptureModule.create()
+        module.repositoryForTest().addHttp(record(responseCode = 500))
+
+        val summary = module.captureSummary()
+
+        assertEquals(1, summary.httpCount)
+        assertEquals(0, summary.webSocketCount)
+        assertEquals(0, summary.webSocketFrameCount)
+        assertEquals(1, summary.errorCount)
+    }
+
     private fun record(responseCode: Int) = HttpRecord(
         id = "r1",
         timestamp = 1L,
