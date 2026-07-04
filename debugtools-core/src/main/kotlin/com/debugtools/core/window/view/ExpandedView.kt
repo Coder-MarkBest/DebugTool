@@ -1,7 +1,6 @@
 package com.debugtools.core.window.view
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -10,6 +9,7 @@ import android.widget.TextView
 import com.debugtools.core.module.DebugModule
 
 internal class ExpandedView(context: Context) : LinearLayout(context) {
+    private val tabRailWidthPx = DebugToolsTheme.dp(resources, 72)
     private val tabBar = TabBarView(context)
     private val contentFrame = FrameLayout(context)
     private var contentViews: List<View> = emptyList()
@@ -20,24 +20,32 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
     var onBriefClick: (() -> Unit)? = null
 
     init {
-        orientation = VERTICAL
-        setBackgroundColor(Color.parseColor("#CC1A1A2E"))
+        orientation = HORIZONTAL
+        setBackgroundColor(DebugToolsTheme.background)
 
-        // Header row: TabBar (flex) + two mode-switch buttons on the right
-        val header = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            setBackgroundColor(Color.parseColor("#2D3748"))
+        val rail = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(DebugToolsTheme.panel)
         }
         tabBar.onTabSelected = { showContent(it) }
-        header.addView(
+        rail.addView(
             tabBar,
-            LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         )
-        header.addView(buildControlButton("▭", "切到最小化模式") { onMinimizeClick?.invoke() })
-        header.addView(buildControlButton("≡", "切到简要信息模式") { onBriefClick?.invoke() })
+        val controls = LinearLayout(context).apply {
+            orientation = VERTICAL
+            setBackgroundColor(DebugToolsTheme.panel)
+        }
+        controls.addView(buildControlButton("▭", "切到最小化模式") { onMinimizeClick?.invoke() })
+        controls.addView(buildControlButton("≡", "切到简要信息模式") { onBriefClick?.invoke() })
+        rail.addView(
+            controls,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        )
 
-        addView(header, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        addView(contentFrame, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        contentFrame.setBackgroundColor(DebugToolsTheme.background)
+        addView(rail, LayoutParams(tabRailWidthPx, LayoutParams.MATCH_PARENT))
+        addView(contentFrame, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
     }
 
     private fun buildControlButton(label: String, contentDesc: String,
@@ -45,11 +53,12 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
         TextView(context).apply {
             text = label
             textSize = 18f
-            setTextColor(Color.WHITE)
+            setTextColor(DebugToolsTheme.primaryText)
             gravity = Gravity.CENTER
             contentDescription = contentDesc
-            val px48 = (48 * resources.displayMetrics.density).toInt()
-            layoutParams = LayoutParams(px48, LayoutParams.MATCH_PARENT)
+            setBackgroundColor(DebugToolsTheme.panel)
+            val px48 = DebugToolsTheme.dp(resources, 48)
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, px48)
             setOnClickListener { onClick() }
         }
 
@@ -63,4 +72,6 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
         contentFrame.removeAllViews()
         contentViews.getOrNull(index)?.let { contentFrame.addView(it) }
     }
+
+    internal fun tabRailWidthPxForTest(): Int = tabRailWidthPx
 }

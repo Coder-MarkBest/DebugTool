@@ -17,7 +17,9 @@ internal class FloatingWindowManager(
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val dm = context.resources.displayMetrics
-    private val expandedWidth = (dm.widthPixels * 0.42f).toInt()
+    private val minExpandedWidth = (dm.widthPixels * 0.28f).toInt()
+    private val maxExpandedWidth = (dm.widthPixels * 0.70f).toInt()
+    private var expandedWidth = (dm.widthPixels * 0.42f).toInt()
     private val buttonSizePx = (56 * dm.density).toInt()
     private val briefStripPx = (44 * dm.density).toInt()
     private var rootView: FloatingRootView? = null
@@ -37,7 +39,15 @@ internal class FloatingWindowManager(
 
     fun init(modules: List<DebugModule>) {
         if (!Settings.canDrawOverlays(context)) throw OverlayPermissionException()
-        val view = FloatingRootView(context, modeManager, briefOrientation, windowManager, layoutParams, recordingManager)
+        val view = FloatingRootView(
+            context,
+            modeManager,
+            briefOrientation,
+            windowManager,
+            layoutParams,
+            recordingManager,
+            onResizeExpandedBy = { resizeExpandedBy(it) }
+        )
         view.setModules(modules)
         windowManager.addView(view, layoutParams)
         rootView = view
@@ -53,6 +63,21 @@ internal class FloatingWindowManager(
             try { windowManager.removeView(it) } catch (_: Exception) {}
         }
         rootView = null
+    }
+
+    fun resizeExpandedBy(deltaPx: Int) {
+        if (deltaPx == 0) return
+        expandedWidth = (expandedWidth + deltaPx).coerceIn(minExpandedWidth, maxExpandedWidth)
+        if (modeManager.currentMode == DisplayMode.EXPANDED) {
+            layoutParams.width = expandedWidth
+            rootView?.let {
+                try {
+                    windowManager.updateViewLayout(it, layoutParams)
+                } catch (_: IllegalArgumentException) {
+                    // Window was removed between drag frames; safe to ignore.
+                }
+            }
+        }
     }
 
     private fun applyModeParams(mode: DisplayMode) {
@@ -87,4 +112,8 @@ internal class FloatingWindowManager(
             }
         }
     }
+
+    internal fun expandedWidthForTest(): Int = expandedWidth
+    internal fun minExpandedWidthForTest(): Int = minExpandedWidth
+    internal fun maxExpandedWidthForTest(): Int = maxExpandedWidth
 }

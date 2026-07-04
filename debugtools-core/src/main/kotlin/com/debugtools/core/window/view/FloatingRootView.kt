@@ -2,6 +2,7 @@ package com.debugtools.core.window.view
 
 import android.content.Context
 import android.graphics.Color
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.view.Gravity
@@ -30,7 +31,8 @@ internal class FloatingRootView(
     briefOrientation: BriefOrientation,
     private val windowManager: WindowManager,
     private val layoutParams: WindowManager.LayoutParams,
-    private val recordingManager: DebugRecordingManager
+    private val recordingManager: DebugRecordingManager,
+    private val onResizeExpandedBy: (Int) -> Unit = {}
 ) : FrameLayout(context) {
 
     private val expandedView = ExpandedView(context)
@@ -44,6 +46,7 @@ internal class FloatingRootView(
     )
     private var modules: List<DebugModule> = emptyList()
     private var lastSavedPath: String? = null
+    private var resizeLastRawX: Float? = null
 
     init {
         expandedView.onMinimizeClick = { modeManager.setMode(DisplayMode.MINIMIZED) }
@@ -74,9 +77,18 @@ internal class FloatingRootView(
 
     private fun buildExpandedContainer(): View {
         val active = recordingManager.isActive()
+        val shell = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(DebugToolsTheme.background)
+        }
+        shell.addView(buildResizeHandle(), LinearLayout.LayoutParams(
+            DebugToolsTheme.dp(resources, 10),
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ))
+
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
+            setBackgroundColor(DebugToolsTheme.background)
         }
         detach(recordingBar)
         recordingBar.setLastSavedPath(lastSavedPath)
@@ -101,16 +113,47 @@ internal class FloatingRootView(
             0,
             1f
         ))
-        return container
+        shell.addView(container, LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            1f
+        ))
+        return shell
     }
+
+    private fun buildResizeHandle(): View =
+        View(context).apply {
+            setBackgroundColor(DebugToolsTheme.divider)
+            contentDescription = "拖拽调整面板宽度"
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        resizeLastRawX = event.rawX
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val last = resizeLastRawX ?: event.rawX
+                        val delta = (last - event.rawX).toInt()
+                        resizeLastRawX = event.rawX
+                        onResizeExpandedBy(delta)
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        resizeLastRawX = null
+                        true
+                    }
+                    else -> false
+                }
+            }
+        }
 
     private fun buildInteractionBlocker(): View =
         TextView(context).apply {
             setBackgroundColor(Color.parseColor("#99000000"))
-            setTextColor(Color.WHITE)
+            setTextColor(DebugToolsTheme.primaryText)
             textSize = 14f
             gravity = Gravity.CENTER
-            text = "录制中，模块交互已锁定"
+            text = "录制中，仅允许停止录制"
             isClickable = true
             isFocusable = true
         }

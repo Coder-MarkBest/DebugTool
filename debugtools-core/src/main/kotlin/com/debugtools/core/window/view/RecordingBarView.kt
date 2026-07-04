@@ -1,7 +1,6 @@
 package com.debugtools.core.window.view
 
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,15 +21,15 @@ internal class RecordingBarView(
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(8), dp(8), dp(8))
-        setBackgroundColor(Color.parseColor("#18212B"))
+        setBackgroundColor(DebugToolsTheme.panel)
 
-        title.setTextColor(Color.WHITE)
+        title.setTextColor(DebugToolsTheme.primaryText)
         title.textSize = 13f
         addView(title, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
         action.gravity = Gravity.CENTER
         action.textSize = 13f
-        action.setTextColor(Color.WHITE)
+        action.setTextColor(DebugToolsTheme.primaryText)
         action.setPadding(dp(12), dp(7), dp(12), dp(7))
         action.setOnClickListener {
             if (busy) return@setOnClickListener
@@ -58,11 +57,11 @@ internal class RecordingBarView(
             val id = (state as RecordingState.Active).context.recordingId
             title.text = "全局录制中 · $id"
             action.text = "停止录制"
-            action.setBackgroundColor(Color.parseColor("#B83232"))
+            action.setBackgroundColor(DebugToolsTheme.danger)
         } else {
             title.text = lastSavedPath?.let { "已保存到 $it" } ?: "全局录制"
             action.text = "开始录制"
-            action.setBackgroundColor(Color.parseColor("#2F855A"))
+            action.setBackgroundColor(DebugToolsTheme.success)
         }
     }
 

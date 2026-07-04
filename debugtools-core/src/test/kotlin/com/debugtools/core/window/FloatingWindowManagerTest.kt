@@ -49,4 +49,30 @@ class FloatingWindowManagerTest {
             fail("init(emptyList()) threw an exception: ${e.message}")
         }
     }
+
+    @Test fun `expanded width resizes and clamps to car console bounds`() {
+        manager.init(emptyList())
+        val initial = manager.expandedWidthForTest()
+
+        manager.resizeExpandedBy(300)
+        assertTrue(manager.expandedWidthForTest() > initial)
+
+        manager.resizeExpandedBy(-10_000)
+        assertEquals(manager.minExpandedWidthForTest(), manager.expandedWidthForTest())
+
+        manager.resizeExpandedBy(10_000)
+        assertEquals(manager.maxExpandedWidthForTest(), manager.expandedWidthForTest())
+    }
+
+    @Test fun `resize preserves minimized dimensions`() {
+        manager.init(emptyList())
+        modeManager.setMode(DisplayMode.MINIMIZED)
+        val before = (shadowWm().views.first().layoutParams as WindowManager.LayoutParams).width
+
+        manager.resizeExpandedBy(300)
+
+        val after = (shadowWm().views.first().layoutParams as WindowManager.LayoutParams).width
+        assertEquals(before, after)
+        assertTrue(manager.expandedWidthForTest() > before)
+    }
 }
