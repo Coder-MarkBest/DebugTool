@@ -5,8 +5,14 @@ import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
 import com.debugtools.core.persistence.SettingsStorage
+import com.debugtools.core.recording.ModuleRecordingResult
+import com.debugtools.core.recording.ModuleRecordingSnapshot
+import com.debugtools.core.recording.RecordableModule
+import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
+import com.debugtools.stability.protocol.CrashEntry
 import com.debugtools.stability.view.StabilityRootView
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,10 +22,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
-class StabilityModule : DebugModule {
+class StabilityModule : DebugModule, RecordableModule {
 
     override val moduleId: String = "stability"
+    override val recorderId: String = moduleId
     override val tabTitle: String = "稳定性"
 
     private var rootView: StabilityRootView? = null
@@ -46,6 +55,39 @@ class StabilityModule : DebugModule {
     }
 
     override fun buildSettings(): List<SettingGroup> = emptyList()
+
+    override fun onRecordingStart(context: RecordingContext): ModuleRecordingSnapshot {
+        val status = StabilityMonitor.processAliveStatus()
+        return ModuleRecordingSnapshot(
+            moduleId = moduleId,
+            summary = mapOf(
+                "processes" to status.size.toString(),
+                "deadProcesses" to status.count { !it.value }.toString()
+            )
+        )
+    }
+
+    override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
+        val status = StabilityMonitor.processAliveStatus()
+        val entries = StabilityMonitor.searchNow()
+        val dir = File(context.rootDir, moduleId).apply { mkdirs() }
+        val file = File(dir, "stability.json")
+        file.writeText(JSONObject().apply {
+            put("processAliveStatus", JSONObject().apply {
+                status.forEach { (name, alive) -> put(name, alive) }
+            })
+            put("crashes", JSONArray().apply { entries.forEach { put(it.toJson()) } })
+        }.toString(2))
+        return ModuleRecordingResult(
+            moduleId = moduleId,
+            files = listOf(file),
+            summary = mapOf(
+                "processes" to status.size.toString(),
+                "deadProcesses" to status.count { !it.value }.toString(),
+                "crashes" to entries.size.toString()
+            )
+        )
+    }
 
     override fun getBriefItems(): List<BriefItem> {
         val status = StabilityMonitor.processAliveStatus()
@@ -79,5 +121,14 @@ class StabilityModule : DebugModule {
                 )
             }
         }
+    }
+
+    private fun CrashEntry.toJson(): JSONObject = JSONObject().apply {
+        put("type", type.name)
+        put("processName", processName)
+        put("timestamp", timestamp)
+        put("sourcePath", sourcePath)
+        put("pid", pid)
+        put("stackTrace", stackTrace)
     }
 }

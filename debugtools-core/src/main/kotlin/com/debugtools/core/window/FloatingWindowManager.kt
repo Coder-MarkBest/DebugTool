@@ -6,12 +6,14 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.recording.DebugRecordingManager
 import com.debugtools.core.window.view.FloatingRootView
 
 internal class FloatingWindowManager(
     private val context: Context,
     private val modeManager: DisplayModeManager,
-    private val briefOrientation: BriefOrientation
+    private val briefOrientation: BriefOrientation,
+    private val recordingManager: DebugRecordingManager
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val dm = context.resources.displayMetrics
@@ -35,7 +37,7 @@ internal class FloatingWindowManager(
 
     fun init(modules: List<DebugModule>) {
         if (!Settings.canDrawOverlays(context)) throw OverlayPermissionException()
-        val view = FloatingRootView(context, modeManager, briefOrientation, windowManager, layoutParams)
+        val view = FloatingRootView(context, modeManager, briefOrientation, windowManager, layoutParams, recordingManager)
         view.setModules(modules)
         windowManager.addView(view, layoutParams)
         rootView = view

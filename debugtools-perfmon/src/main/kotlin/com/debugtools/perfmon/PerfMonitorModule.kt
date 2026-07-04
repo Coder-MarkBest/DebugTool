@@ -5,8 +5,15 @@ import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
 import com.debugtools.core.persistence.SettingsStorage
+import com.debugtools.core.recording.ModuleRecordingResult
+import com.debugtools.core.recording.ModuleRecordingSnapshot
+import com.debugtools.core.recording.RecordableModule
+import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
+import com.debugtools.perfmon.data.ProcessDetail
+import com.debugtools.perfmon.data.ProcessSample
 import com.debugtools.perfmon.data.ProcessTarget
+import com.debugtools.perfmon.data.ThreadInfo
 import com.debugtools.perfmon.presenter.PerfPresenter
 import com.debugtools.perfmon.repository.PerfRepository
 import com.debugtools.perfmon.sampler.Tier1Sampler
@@ -22,13 +29,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 
 class PerfMonitorModule private constructor(
     private val config: Config,
     private val targets: List<ProcessTarget>
-) : DebugModule {
+) : DebugModule, RecordableModule {
 
     override val moduleId: String = "debugtools_perfmon"
+    override val recorderId: String = moduleId
     override val tabTitle: String = "性能监控"
 
     private val repository = PerfRepository(config)
@@ -40,6 +50,45 @@ class PerfMonitorModule private constructor(
     private var rootView: PerfRootView? = null
 
     override fun buildSettings(): List<SettingGroup> = emptyList()
+
+    override fun onRecordingStart(context: RecordingContext): ModuleRecordingSnapshot {
+        val snap = repository.state.value
+        return ModuleRecordingSnapshot(
+            moduleId = moduleId,
+            summary = mapOf(
+                "targets" to snap.series.size.toString(),
+                "samples" to snap.series.values.sumOf { it.snapshot().size }.toString()
+            )
+        )
+    }
+
+    override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
+        val snap = repository.state.value
+        val dir = File(context.rootDir, moduleId).apply { mkdirs() }
+        val file = File(dir, "perf-series.json")
+        file.writeText(JSONObject().apply {
+            put("series", JSONObject().apply {
+                snap.series.forEach { (key, series) ->
+                    put(key, JSONArray().apply {
+                        series.snapshot().forEach { put(it.value.toJson()) }
+                    })
+                }
+            })
+            put("detail", snap.detail?.toJson())
+        }.toString(2))
+        val samples = snap.series.values.sumOf { it.snapshot().size }
+        val last = snap.series.values.mapNotNull { it.snapshot().lastOrNull()?.value }
+        val highCpu = last.count { it.cpuPercent >= config.cpuRedThreshold }
+        return ModuleRecordingResult(
+            moduleId = moduleId,
+            files = listOf(file),
+            summary = mapOf(
+                "targets" to snap.series.size.toString(),
+                "samples" to samples.toString(),
+                "redCpuTargets" to highCpu.toString()
+            )
+        )
+    }
 
     override fun createContentView(context: Context): View {
         val view = PerfRootView(
@@ -112,6 +161,36 @@ class PerfMonitorModule private constructor(
 
     internal fun targetsForTest(): List<ProcessTarget> = targets
     internal fun configForTest(): Config = config
+
+    private fun ProcessSample.toJson(): JSONObject = JSONObject().apply {
+        put("target", target.key)
+        put("pid", pid)
+        put("timestamp", timestamp)
+        put("cpuPercent", cpuPercent.toDouble())
+        put("rssBytes", rssBytes)
+        put("threadCount", threadCount)
+        put("alive", alive)
+    }
+
+    private fun ProcessDetail.toJson(): JSONObject = JSONObject().apply {
+        put("pid", pid)
+        put("timestamp", timestamp)
+        put("totalPssKb", totalPssKb)
+        put("dalvikPssKb", dalvikPssKb)
+        put("nativePssKb", nativePssKb)
+        put("otherPssKb", otherPssKb)
+        put("threads", JSONArray().apply { threads.forEach { put(it.toJson()) } })
+        put("threadStateDistribution", JSONObject().apply {
+            threadStateDistribution.forEach { (state, count) -> put(state.name, count) }
+        })
+    }
+
+    private fun ThreadInfo.toJson(): JSONObject = JSONObject().apply {
+        put("tid", tid)
+        put("name", name)
+        put("cpuPercent", cpuPercent.toDouble())
+        put("state", state.name)
+    }
 
     class Builder {
         private val targets = mutableListOf<ProcessTarget>()

@@ -3,6 +3,7 @@ package com.debugtools.core.window
 import android.content.Context
 import android.view.WindowManager
 import androidx.test.core.app.ApplicationProvider
+import com.debugtools.core.recording.DebugRecordingManager
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -21,7 +22,7 @@ class FloatingWindowManagerTest {
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         modeManager = DisplayModeManager()
-        manager = FloatingWindowManager(context, modeManager, BriefOrientation.VERTICAL)
+        manager = FloatingWindowManager(context, modeManager, BriefOrientation.VERTICAL, DebugRecordingManager())
         ShadowSettings.setCanDrawOverlays(true)
     }
 

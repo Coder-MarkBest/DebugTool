@@ -12,9 +12,14 @@ import com.debugtools.audiomon.view.AudioMonitorView
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
 import com.debugtools.core.persistence.SettingsStorage
+import com.debugtools.core.recording.ModuleRecordingResult
+import com.debugtools.core.recording.ModuleRecordingSnapshot
+import com.debugtools.core.recording.RecordableModule
+import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.core.settings.SettingItem
 import java.io.File
+import org.json.JSONObject
 
 /**
  * Debug module for dual-stream audio recording.
@@ -35,9 +40,10 @@ import java.io.File
  */
 class AudioMonitorModule(
     private val reporter: AudioReporter? = null
-) : DebugModule {
+) : DebugModule, RecordableModule {
 
     override val moduleId: String = "audiomon"
+    override val recorderId: String = moduleId
     override val tabTitle: String = "音频监控"
 
     private var presenter: AudioPresenter? = null
@@ -138,6 +144,30 @@ class AudioMonitorModule(
                     ),
                 )
             )
+        )
+    }
+
+    override fun onRecordingStart(context: RecordingContext): ModuleRecordingSnapshot {
+        return ModuleRecordingSnapshot(
+            moduleId = moduleId,
+            summary = mapOf("monitoring" to (presenter?.monitoring == true).toString())
+        )
+    }
+
+    override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
+        val app = appContext
+        val dir = File(context.rootDir, moduleId).apply { mkdirs() }
+        val file = File(dir, "audio-state.json")
+        file.writeText(JSONObject().apply {
+            put("monitoring", presenter?.monitoring == true)
+            put("hasRecordPermission", app?.let { hasRecordPermission(it) } ?: false)
+            put("globalRecordingStartsMicrophone", false)
+            put("note", "AudioMonitor keeps its own explicit recording control; global recording captures module state only.")
+        }.toString(2))
+        return ModuleRecordingResult(
+            moduleId = moduleId,
+            files = listOf(file),
+            summary = mapOf("monitoring" to (presenter?.monitoring == true).toString())
         )
     }
 

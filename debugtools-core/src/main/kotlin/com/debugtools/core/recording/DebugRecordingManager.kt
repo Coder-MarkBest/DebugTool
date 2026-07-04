@@ -20,6 +20,8 @@ class DebugRecordingManager(
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)
     val state: StateFlow<RecordingState> = _state
 
+    fun isActive(): Boolean = activeContext != null
+
     fun start(modules: List<DebugModule>, recordingsRoot: File): RecordingContext = synchronized(lock) {
         check(activeContext == null) { "Recording already active" }
         val id = recordingId()
