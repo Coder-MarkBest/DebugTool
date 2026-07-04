@@ -4,6 +4,10 @@ import android.content.Context
 import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
@@ -52,7 +56,7 @@ import java.util.UUID
  */
 class NetworkCaptureModule private constructor(
     private val config: Config
-) : DebugModule, RecordableModule {
+) : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = MODULE_ID
     override val recorderId: String = moduleId
@@ -148,6 +152,9 @@ class NetworkCaptureModule private constructor(
         )
     }
 
+    override fun getOverviewItems(): List<OverviewItem> =
+        listOf(overviewItem(repository.snapshot()))
+
     override fun onAttach(context: Context, storage: SettingsStorage) {
         val s = CoroutineScope(Dispatchers.Main + SupervisorJob())
         scope = s
@@ -217,5 +224,24 @@ class NetworkCaptureModule private constructor(
     companion object {
         const val MODULE_ID = "debugtools_okhttp_capture"
         fun create(config: Config = Config()): NetworkCaptureModule = NetworkCaptureModule(config)
+
+        fun overviewItem(snap: NetworkRepository.Snapshot): OverviewItem {
+            val errors = snap.httpRecords.count { it.failure != null || it.responseCode >= 400 } +
+                snap.webSocketSessions.count { it.failure != null }
+            val frames = snap.webSocketSessions.sumOf { it.frames.size }
+            val status = if (errors > 0) OverviewStatus.ERROR else OverviewStatus.OK
+            return OverviewItem(
+                moduleId = MODULE_ID,
+                title = "网络抓包",
+                status = status,
+                primaryText = "HTTP ${snap.httpRecords.size} · WS ${snap.webSocketSessions.size}(${frames}帧)" +
+                    if (errors > 0) " · ${errors}错误" else "",
+                metrics = listOf(
+                    OverviewMetric("HTTP", snap.httpRecords.size.toString()),
+                    OverviewMetric("WS", snap.webSocketSessions.size.toString()),
+                    OverviewMetric("错误", errors.toString(), if (errors > 0) OverviewStatus.ERROR else OverviewStatus.OK)
+                )
+            )
+        }
     }
 }

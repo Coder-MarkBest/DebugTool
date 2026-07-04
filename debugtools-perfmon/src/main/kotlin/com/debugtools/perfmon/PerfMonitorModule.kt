@@ -4,6 +4,10 @@ import android.content.Context
 import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
@@ -35,7 +39,7 @@ import org.json.JSONObject
 class PerfMonitorModule private constructor(
     private val config: Config,
     private val targets: List<ProcessTarget>
-) : DebugModule, RecordableModule {
+) : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = "debugtools_perfmon"
     override val recorderId: String = moduleId
@@ -112,6 +116,9 @@ class PerfMonitorModule private constructor(
             )
         )
     }
+
+    override fun getOverviewItems(): List<OverviewItem> =
+        listOf(overviewItem(repository.state.value, config))
 
     override fun onAttach(context: Context, storage: SettingsStorage) {
         val app = context.applicationContext
@@ -221,5 +228,38 @@ class PerfMonitorModule private constructor(
 
     companion object {
         fun builder() = Builder()
+
+        fun overviewItem(snap: PerfRepository.Snapshot, config: Config): OverviewItem {
+            val last = snap.series.values.mapNotNull { it.snapshot().lastOrNull()?.value }
+            if (last.isEmpty()) {
+                return OverviewItem(
+                    moduleId = "debugtools_perfmon",
+                    title = "性能监控",
+                    status = OverviewStatus.UNKNOWN,
+                    primaryText = "暂无性能样本"
+                )
+            }
+            val maxCpu = last.maxOf { it.cpuPercent }
+            val dead = last.count { !it.alive }
+            val redCpu = last.count { it.cpuPercent >= config.cpuRedThreshold }
+            val orangeCpu = last.count { it.cpuPercent >= config.cpuOrangeThreshold }
+            val status = when {
+                dead > 0 || redCpu > 0 -> OverviewStatus.ERROR
+                orangeCpu > 0 -> OverviewStatus.WARNING
+                else -> OverviewStatus.OK
+            }
+            return OverviewItem(
+                moduleId = "debugtools_perfmon",
+                title = "性能监控",
+                status = status,
+                primaryText = "${last.size}进程 · CPU max %.0f%%".format(maxCpu) +
+                    if (dead > 0) " · ${dead}不可用" else "",
+                metrics = listOf(
+                    OverviewMetric("进程", last.size.toString()),
+                    OverviewMetric("CPU max", "%.0f%%".format(maxCpu), if (redCpu > 0) OverviewStatus.ERROR else if (orangeCpu > 0) OverviewStatus.WARNING else OverviewStatus.OK),
+                    OverviewMetric("不可用", dead.toString(), if (dead > 0) OverviewStatus.ERROR else OverviewStatus.OK)
+                )
+            )
+        }
     }
 }

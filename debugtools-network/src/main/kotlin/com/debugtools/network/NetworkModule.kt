@@ -6,6 +6,9 @@ import android.view.View
 import android.widget.TextView
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.core.settings.SettingItem
@@ -16,7 +19,7 @@ import kotlinx.coroutines.cancel
 
 class NetworkModule private constructor(
     private val defaultGateway: String
-) : DebugModule, NetworkView {
+) : DebugModule, NetworkView, OverviewProvider {
     override val moduleId = "debugtools_network"
     override val tabTitle = "网络"
 
@@ -43,6 +46,9 @@ class NetworkModule private constructor(
 
     override fun getBriefItems() = listOf(BriefItem(stateText, stateColor))
 
+    override fun getOverviewItems(): List<OverviewItem> =
+        listOf(overviewItem(stateText))
+
     override fun onAttach(context: Context, storage: SettingsStorage) {
         val gateway = storage.getString("gateway", defaultGateway)
         val dataSource = DefaultNetworkDataSource(context, gateway)
@@ -62,5 +68,20 @@ class NetworkModule private constructor(
 
     companion object {
         fun create(gateway: String = "8.8.8.8") = NetworkModule(gateway)
+
+        fun overviewItem(stateText: String): OverviewItem {
+            val status = when {
+                stateText.contains("无网络") || stateText.contains("离线") -> OverviewStatus.ERROR
+                stateText.contains("差") || stateText.contains("超时") -> OverviewStatus.WARNING
+                stateText == "检测中..." -> OverviewStatus.UNKNOWN
+                else -> OverviewStatus.OK
+            }
+            return OverviewItem(
+                moduleId = "debugtools_network",
+                title = "网络",
+                status = status,
+                primaryText = stateText
+            )
+        }
     }
 }

@@ -7,6 +7,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.settings.SettingGroup
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +21,7 @@ import kotlinx.coroutines.cancel
 class GeneralModule private constructor(
     private val diskMonitors: List<DiskMonitor>,
     private val processMonitors: List<ProcessMonitor>
-) : DebugModule, GeneralView {
+) : DebugModule, GeneralView, OverviewProvider {
     override val moduleId = "debugtools_general"
     override val tabTitle = "通用"
 
@@ -53,6 +57,9 @@ class GeneralModule private constructor(
         }
         return diskItems + procItems
     }
+
+    override fun getOverviewItems(): List<OverviewItem> =
+        listOf(overviewItem(diskSizes, processStates))
 
     override fun onAttach(context: Context, storage: SettingsStorage) {
         diskMonitors.forEach { it.start(scope) }
@@ -114,5 +121,32 @@ class GeneralModule private constructor(
 
     companion object {
         fun builder(context: Context) = Builder(context)
+
+        fun overviewItem(
+            diskSizes: List<Pair<String, Long>>,
+            processStates: List<Pair<String, Boolean>>
+        ): OverviewItem {
+            if (diskSizes.isEmpty() && processStates.isEmpty()) {
+                return OverviewItem(
+                    moduleId = "debugtools_general",
+                    title = "通用",
+                    status = OverviewStatus.UNKNOWN,
+                    primaryText = "暂无通用状态"
+                )
+            }
+            val dead = processStates.count { !it.second }
+            val status = if (dead > 0) OverviewStatus.ERROR else OverviewStatus.OK
+            return OverviewItem(
+                moduleId = "debugtools_general",
+                title = "通用",
+                status = status,
+                primaryText = "磁盘 ${diskSizes.size}项 · 进程 ${processStates.size}项" +
+                    if (dead > 0) " · ${dead}异常" else "",
+                metrics = listOf(
+                    OverviewMetric("磁盘", diskSizes.size.toString()),
+                    OverviewMetric("进程异常", dead.toString(), if (dead > 0) OverviewStatus.ERROR else OverviewStatus.OK)
+                )
+            )
+        }
     }
 }

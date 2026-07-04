@@ -4,6 +4,10 @@ import android.content.Context
 import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
@@ -25,7 +29,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-class StabilityModule : DebugModule, RecordableModule {
+class StabilityModule : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = "stability"
     override val recorderId: String = moduleId
@@ -96,6 +100,12 @@ class StabilityModule : DebugModule, RecordableModule {
         return listOf(BriefItem(text = "$dead 个进程异常"))
     }
 
+    override fun getOverviewItems(): List<OverviewItem> {
+        val status = StabilityMonitor.processAliveStatus()
+        val crashCount = runCatching { StabilityMonitor.searchNow().size }.getOrDefault(0)
+        return listOf(overviewItem(status, crashCount))
+    }
+
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = scope.launch {
@@ -130,5 +140,31 @@ class StabilityModule : DebugModule, RecordableModule {
         put("sourcePath", sourcePath)
         put("pid", pid)
         put("stackTrace", stackTrace)
+    }
+
+    companion object {
+        fun overviewItem(processStatus: Map<String, Boolean>, crashCount: Int): OverviewItem {
+            if (processStatus.isEmpty() && crashCount == 0) {
+                return OverviewItem(
+                    moduleId = "stability",
+                    title = "稳定性",
+                    status = OverviewStatus.UNKNOWN,
+                    primaryText = "暂无稳定性数据"
+                )
+            }
+            val dead = processStatus.count { !it.value }
+            val status = if (dead > 0 || crashCount > 0) OverviewStatus.ERROR else OverviewStatus.OK
+            return OverviewItem(
+                moduleId = "stability",
+                title = "稳定性",
+                status = status,
+                primaryText = "进程 ${processStatus.size}项 · Crash $crashCount" +
+                    if (dead > 0) " · ${dead}异常" else "",
+                metrics = listOf(
+                    OverviewMetric("Crash", crashCount.toString(), if (crashCount > 0) OverviewStatus.ERROR else OverviewStatus.OK),
+                    OverviewMetric("进程异常", dead.toString(), if (dead > 0) OverviewStatus.ERROR else OverviewStatus.OK)
+                )
+            )
+        }
     }
 }
