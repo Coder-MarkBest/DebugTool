@@ -20,6 +20,7 @@ internal class RecordingBarView(
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(DebugToolsTheme.recordingBarHeightDp)
         setPadding(dp(12), dp(8), dp(8), dp(8))
         setBackgroundColor(DebugToolsTheme.panel)
 
@@ -30,6 +31,7 @@ internal class RecordingBarView(
         action.gravity = Gravity.CENTER
         action.textSize = 13f
         action.setTextColor(DebugToolsTheme.primaryText)
+        action.minWidth = dp(88)
         action.setPadding(dp(12), dp(7), dp(12), dp(7))
         action.setOnClickListener {
             if (busy) return@setOnClickListener

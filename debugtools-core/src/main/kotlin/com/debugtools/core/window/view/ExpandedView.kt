@@ -10,7 +10,7 @@ import com.debugtools.core.module.DebugModule
 import com.debugtools.core.overview.OverviewAggregator
 
 internal class ExpandedView(context: Context) : LinearLayout(context) {
-    private val tabRailWidthPx = DebugToolsTheme.dp(resources, 72)
+    private val tabRailWidthPx = DebugToolsTheme.dp(resources, DebugToolsTheme.tabRailWidthDp)
     private val tabBar = TabBarView(context)
     private val contentFrame = FrameLayout(context)
     private val overviewView = OverviewView(context)
