@@ -4,12 +4,19 @@ import android.content.Context
 import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
 import com.debugtools.core.recording.RecordableModule
 import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
+import com.debugtools.startup.analyzer.StartupAnalyzer
+import com.debugtools.startup.protocol.IssueType
+import com.debugtools.startup.protocol.Severity
 import com.debugtools.startup.protocol.StartupSession
 import com.debugtools.startup.protocol.StepStatus
 import com.debugtools.startup.store.StartupStore
@@ -26,7 +33,7 @@ import org.json.JSONArray
  * DebugTools.builder(context).register(StartupMonitorModule()).build()
  * ```
  */
-class StartupMonitorModule : DebugModule, RecordableModule {
+class StartupMonitorModule : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = "startup"
     override val recorderId: String = moduleId
@@ -86,9 +93,54 @@ class StartupMonitorModule : DebugModule, RecordableModule {
         return listOf(BriefItem(text = "启动 ${current.steps.size}步" + if (fail > 0) " · ${fail}失败" else ""))
     }
 
+    override fun getOverviewItems(): List<OverviewItem> {
+        val app = appContext
+        val persisted = app?.let { StartupStore(File(it.filesDir, "startup")).load() }.orEmpty()
+        val sessions = mergeCurrent(AppStartupMonitor.currentSession(), persisted)
+        return listOf(overviewItem(sessions.maxByOrNull { it.startedAtWallMs }))
+    }
+
     private fun mergeCurrent(current: StartupSession?, persisted: List<StartupSession>): List<StartupSession> {
         if (current == null) return persisted
         val rest = persisted.filter { it.sessionId != current.sessionId }
         return listOf(current) + rest
+    }
+
+    companion object {
+        fun overviewItem(session: StartupSession?): OverviewItem {
+            if (session == null) {
+                return OverviewItem(
+                    moduleId = "startup",
+                    title = "启动链路",
+                    status = OverviewStatus.UNKNOWN,
+                    primaryText = "暂无启动数据"
+                )
+            }
+            val issues = StartupAnalyzer.analyze(session)
+            val failedSteps = session.steps.count { it.status == StepStatus.FAILED }
+            val slowSteps = issues.count { it.type == IssueType.SLOW }
+            val neverEnded = issues.count { it.type == IssueType.NEVER_ENDED }
+            val errorIssues = issues.count { it.severity == Severity.ERROR }
+            val warnIssues = issues.count { it.severity == Severity.WARN }
+            val status = when {
+                failedSteps > 0 || errorIssues > 0 -> OverviewStatus.ERROR
+                slowSteps > 0 || neverEnded > 0 || warnIssues > 0 -> OverviewStatus.WARNING
+                else -> OverviewStatus.OK
+            }
+            return OverviewItem(
+                moduleId = "startup",
+                title = "启动链路",
+                status = status,
+                primaryText = "最近 ${session.sessionId} · ${session.steps.size}步" +
+                    if (failedSteps > 0) " · ${failedSteps}失败" else "",
+                secondaryText = "慢步骤 $slowSteps · 未结束 $neverEnded",
+                metrics = listOf(
+                    OverviewMetric("步骤", session.steps.size.toString(), OverviewStatus.UNKNOWN),
+                    OverviewMetric("失败", failedSteps.toString(), if (failedSteps > 0) OverviewStatus.ERROR else OverviewStatus.OK),
+                    OverviewMetric("慢步骤", slowSteps.toString(), if (slowSteps > 0) OverviewStatus.WARNING else OverviewStatus.OK),
+                    OverviewMetric("未结束", neverEnded.toString(), if (neverEnded > 0) OverviewStatus.WARNING else OverviewStatus.OK)
+                )
+            )
+        }
     }
 }
