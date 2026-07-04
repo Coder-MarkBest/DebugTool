@@ -32,7 +32,10 @@ import com.debugtools.stability.StabilityMonitor
 import com.debugtools.core.DebugTools
 import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
-import com.debugtools.general.GeneralModule
+import com.debugtools.general.AvailabilityItem
+import com.debugtools.general.AvailabilityItemSource
+import com.debugtools.general.AvailabilityModule
+import com.debugtools.general.AvailabilityStatus
 import com.debugtools.network.NetworkModule
 import com.debugtools.okhttp.NetworkCaptureModule
 import com.debugtools.perfmon.PerfMonitorModule
@@ -286,9 +289,10 @@ class MainActivity : AppCompatActivity() {
                 .register(ConversationMonitorModule())
                 .register(StabilityModule())
                 .register(
-                    GeneralModule.builder(this)
-                        .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
-                        .addProcessMonitor(listOf(packageName))
+                    AvailabilityModule.builder(this)
+                        .addNetworkCheck()
+                        .addProcessCheck(listOf(packageName))
+                        .addExternalSource(sampleAvailabilitySource())
                         .build()
                 )
                 .build()
@@ -314,10 +318,47 @@ class MainActivity : AppCompatActivity() {
             btnGenConversation.isEnabled = true
             StabilityMonitor.init(applicationContext, listOf("com.debugtools.sample", "system_server"))
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路 / 对话链路")
+            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }
+    }
+
+    private fun sampleAvailabilitySource() = AvailabilityItemSource {
+        listOf(
+            AvailabilityItem(
+                id = "overlay_permission",
+                title = "悬浮窗权限",
+                status = if (Settings.canDrawOverlays(this)) {
+                    AvailabilityStatus.AVAILABLE
+                } else {
+                    AvailabilityStatus.UNAVAILABLE
+                },
+                message = if (Settings.canDrawOverlays(this)) "已授权" else "未授权"
+            ),
+            AvailabilityItem(
+                id = "record_audio_permission",
+                title = "录音权限",
+                status = if (ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    AvailabilityStatus.AVAILABLE
+                } else {
+                    AvailabilityStatus.DEGRADED
+                },
+                message = if (ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    "已授权"
+                } else {
+                    "未授权"
+                }
+            )
+        )
     }
 
     private fun sendSingleMockEvent() {

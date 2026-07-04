@@ -11,7 +11,8 @@ DebugTools is an Android voice-assistant debug SDK shown as an overlay. The core
 - `debugtools-perfmon`: process CPU/RSS/thread time series and export.
 - `debugtools-audiomon`: explicit audio monitor; global recording exports current audio state only.
 - `debugtools-stability`: process alive status, DropBox/file crash scan, and export.
-- `debugtools-network`, `debugtools-timeline`, `debugtools-general`: existing network quality, timeline, and general utilities.
+- `debugtools-network`, `debugtools-timeline`: network quality and event timeline utilities.
+- `debugtools-general`: availability checks. The public entry point is `AvailabilityModule`; built-in checks cover process liveness and network availability, and host apps can provide abstract external availability items.
 
 ## Permissions
 
@@ -56,8 +57,39 @@ DebugTools.builder(context)
     .register(ConversationMonitorModule())
     .register(StartupMonitorModule())
     .register(PerfMonitorModule.builder().addProcessByName(context.packageName).build())
+    .register(
+        AvailabilityModule.builder(context)
+            .addProcessCheck(listOf(context.packageName))
+            .addNetworkCheck()
+            .addExternalSource {
+                listOf(
+                    AvailabilityItem(
+                        id = "privacy",
+                        title = "Privacy agreement",
+                        status = AvailabilityStatus.UNKNOWN,
+                        message = "Host app supplies this state"
+                    )
+                )
+            }
+            .build()
+    )
     .build()
 ```
+
+## Availability Protocol
+
+`AvailabilityModule` is intentionally business-agnostic. It does not know whether an item represents an NLU engine, TTS volume, microphone readiness, privacy consent, user settings, or any other product-specific dependency. Host apps map those conditions to `AvailabilityItem`:
+
+```kotlin
+AvailabilityItem(
+    id = "dependency_id",
+    title = "Dependency name",
+    status = AvailabilityStatus.UNAVAILABLE,
+    message = "Reason shown in the debug panel"
+)
+```
+
+Statuses are `AVAILABLE`, `DEGRADED`, `UNAVAILABLE`, and `UNKNOWN`. The overview tab prioritizes unavailable items first, then degraded, then unknown.
 
 ## Voice Trace Protocol
 

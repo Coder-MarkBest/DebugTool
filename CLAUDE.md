@@ -35,7 +35,7 @@ Four Gradle library modules:
 debugtools-core          ← mandatory, all others depend on this
 debugtools-network       ← optional: network type, ping, quality
 debugtools-timeline      ← optional: event timeline with detail expand
-debugtools-general       ← optional: disk monitoring, process alive check
+debugtools-general       ← optional: availability checks; public entry point is AvailabilityModule
 ```
 
 ### Key design patterns
@@ -73,5 +73,5 @@ com.debugtools.core
 - `DataStoreStorage.runBlocking` has no explicit dispatcher to avoid IO thread pool exhaustion deadlock.
 - `ScopedStorage.clear()` is a no-op — `SettingsStorage` has no key enumeration API.
 - AIDL parcelable types require `.aidl` declaration files alongside the interface files in `src/main/aidl/`.
-- `DiskMonitor.intervalMinutes` is clamped to minimum 5 at construction.
+- `debugtools-general` has been replaced conceptually by availability checks; keep API additions business-agnostic (`AvailabilityItem` / `AvailabilityStatus`) and avoid voice-assistant-specific dependency names in SDK types.
 - `DebugTools` singleton — calling `build()` twice orphans the old instance (by design for simplicity).
