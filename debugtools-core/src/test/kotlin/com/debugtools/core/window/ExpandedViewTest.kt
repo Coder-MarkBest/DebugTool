@@ -8,6 +8,9 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.core.window.view.ExpandedView
@@ -80,7 +83,25 @@ class ExpandedViewTest {
         assertTrue(tabView.layoutParams.width <= view.tabRailWidthPxForTest())
     }
 
-    private class FakeModule(
+    @Test fun `expanded view inserts overview as first tab`() {
+        val view = ExpandedView(context)
+        view.setModules(listOf(FakeModule("conversation", "对话链路")))
+
+        assertEquals("总览", view.tabTitleForTest(0))
+        assertEquals("对话链路", view.tabTitleForTest(1))
+        assertEquals(0, view.selectedTabIndexForTest())
+    }
+
+    @Test fun `overview row click opens matching module tab`() {
+        val view = ExpandedView(context)
+        view.setModules(listOf(ProviderFakeModule("conversation", "对话链路")))
+
+        view.clickOverviewRowForTest("conversation")
+
+        assertEquals(1, view.selectedTabIndexForTest())
+    }
+
+    private open class FakeModule(
         override val moduleId: String,
         override val tabTitle: String
     ) : DebugModule {
@@ -89,5 +110,13 @@ class ExpandedViewTest {
         override fun getBriefItems(): List<BriefItem> = emptyList()
         override fun onAttach(context: Context, storage: SettingsStorage) = Unit
         override fun onDetach() = Unit
+    }
+
+    private class ProviderFakeModule(
+        moduleId: String,
+        tabTitle: String
+    ) : FakeModule(moduleId, tabTitle), OverviewProvider {
+        override fun getOverviewItems(): List<OverviewItem> =
+            listOf(OverviewItem(moduleId, tabTitle, OverviewStatus.OK, "正常"))
     }
 }

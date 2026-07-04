@@ -31,9 +31,14 @@ internal class TabBarView(context: Context) : ScrollView(context) {
     }
 
     fun setTabs(modules: List<DebugModule>) {
+        setTabTitles(modules.map { it.tabTitle })
+    }
+
+    fun setTabTitles(titles: List<String>) {
         container.removeAllViews()
-        modules.forEachIndexed { index, module ->
-            container.addView(buildTab(context, module.tabTitle, index == selectedIndex) {
+        if (selectedIndex >= titles.size) selectedIndex = 0
+        titles.forEachIndexed { index, title ->
+            container.addView(buildTab(context, title, index == selectedIndex) {
                 selectTab(index)
             })
         }
@@ -56,7 +61,8 @@ internal class TabBarView(context: Context) : ScrollView(context) {
             setOnClickListener { onClick() }
         }
 
-    private fun selectTab(index: Int) {
+    fun selectTab(index: Int) {
+        if (index !in 0 until container.childCount) return
         selectedIndex = index
         onTabSelected?.invoke(index)
         for (i in 0 until container.childCount) {
@@ -69,6 +75,11 @@ internal class TabBarView(context: Context) : ScrollView(context) {
 
     internal fun firstTabForTest(): TextView? =
         container.getChildAt(0) as? TextView
+
+    internal fun tabTitleForTest(index: Int): String? =
+        (container.getChildAt(index) as? TextView)?.text?.toString()
+
+    internal fun selectedIndexForTest(): Int = selectedIndex
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {

@@ -7,11 +7,14 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewAggregator
 
 internal class ExpandedView(context: Context) : LinearLayout(context) {
     private val tabRailWidthPx = DebugToolsTheme.dp(resources, 72)
     private val tabBar = TabBarView(context)
     private val contentFrame = FrameLayout(context)
+    private val overviewView = OverviewView(context)
+    private var modules: List<DebugModule> = emptyList()
     private var contentViews: List<View> = emptyList()
 
     /** Invoked when the user taps the minimize button. */
@@ -70,14 +73,28 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
         }
 
     fun setModules(modules: List<DebugModule>) {
+        this.modules = modules
         contentViews = modules.map { it.createContentView(context) }
-        tabBar.setTabs(modules)
-        if (modules.isNotEmpty()) showContent(0)
+        tabBar.setTabTitles(listOf("总览") + modules.map { it.tabTitle })
+        showContent(0)
     }
 
     private fun showContent(index: Int) {
         contentFrame.removeAllViews()
-        contentViews.getOrNull(index)?.let { contentFrame.addView(it) }
+        if (index == 0) {
+            overviewView.update(OverviewAggregator.collect(modules)) { moduleId ->
+                openModuleTab(moduleId)
+            }
+            contentFrame.addView(overviewView)
+            return
+        }
+        contentViews.getOrNull(index - 1)?.let { contentFrame.addView(it) }
+    }
+
+    private fun openModuleTab(moduleId: String) {
+        val moduleIndex = modules.indexOfFirst { it.moduleId == moduleId }
+        if (moduleIndex < 0) return
+        tabBar.selectTab(moduleIndex + 1)
     }
 
     internal fun tabRailWidthPxForTest(): Int = tabRailWidthPx
@@ -92,5 +109,15 @@ internal class ExpandedView(context: Context) : LinearLayout(context) {
 
     internal fun dispatchTabRailResizeEndForTest() {
         tabBar.dispatchResizeEndForTest()
+    }
+
+    internal fun tabTitleForTest(index: Int): String? =
+        tabBar.tabTitleForTest(index)
+
+    internal fun selectedTabIndexForTest(): Int =
+        tabBar.selectedIndexForTest()
+
+    internal fun clickOverviewRowForTest(moduleId: String) {
+        overviewView.performRowClickForTest(moduleId)
     }
 }
