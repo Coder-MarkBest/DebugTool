@@ -14,6 +14,8 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "DebugTools"
+include(":startup-init-flow")
+include(":debugtools-startup-init")
 include(":debugtools-core")
 include(":debugtools-network")
 include(":debugtools-timeline")
