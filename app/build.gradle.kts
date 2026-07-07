@@ -30,7 +30,6 @@ dependencies {
     implementation(project(":debugtools-perfmon"))
     implementation(project(":debugtools-audiomon"))
     implementation(project(":debugtools-startup"))
-    implementation(project(":startup-init-flow"))
     implementation(project(":debugtools-startup-init"))
     implementation(project(":debugtools-conversation"))
     implementation(project(":debugtools-stability"))

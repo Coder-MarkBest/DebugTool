@@ -28,7 +28,7 @@ android {
 }
 
 dependencies {
-    implementation(project(":startup-init-flow"))
+    api(project(":startup-init-flow"))
     implementation(project(":debugtools-startup"))
 
     testImplementation("junit:junit:4.13.2")
