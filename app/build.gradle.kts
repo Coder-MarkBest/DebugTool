@@ -30,6 +30,8 @@ dependencies {
     implementation(project(":debugtools-perfmon"))
     implementation(project(":debugtools-audiomon"))
     implementation(project(":debugtools-startup"))
+    implementation(project(":startup-init-flow"))
+    implementation(project(":debugtools-startup-init"))
     implementation(project(":debugtools-conversation"))
     implementation(project(":debugtools-stability"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
