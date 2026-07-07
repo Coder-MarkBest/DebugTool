@@ -1,7 +1,8 @@
 package com.debugtools.startupinit
 
-import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 class InitFlowRunner internal constructor(
     private val tasks: List<InitTask>,
@@ -33,8 +34,10 @@ class InitFlowRunner internal constructor(
         val started = mutableSetOf<String>()
         val completed = mutableSetOf<String>()
         val failedOrSkipped = mutableSetOf<String>()
+        val resultChannel = Channel<InitTaskResult>(capacity = Channel.UNLIMITED)
+        var activeTasks = 0
 
-        while (results.size < tasks.size) {
+        fun resolveBlockedTasks() {
             val blocked = graph.blockedByFailures(
                 failedOrSkipped = failedOrSkipped,
                 completed = completed,
@@ -49,19 +52,20 @@ class InitFlowRunner internal constructor(
                 )
                 failedOrSkipped += task.name
             }
+        }
 
+        fun launchReadyTasks() {
             val ready = graph.readyTasks(
                 completed = completed,
                 failedOrSkipped = failedOrSkipped,
                 started = started
             )
-            if (ready.isEmpty()) break
-
-            ready.forEach { started += it.name }
-            val batch = ready.map { task ->
-                async {
+            ready.forEach { task ->
+                started += task.name
+                activeTasks += 1
+                launch {
                     reporter.taskStarted(task.name, task.dependsOn)
-                    try {
+                    val result = try {
                         task.runner()
                         reporter.taskSucceeded(task.name)
                         InitTaskResult(task.name, InitTaskStatus.SUCCESS)
@@ -73,19 +77,28 @@ class InitFlowRunner internal constructor(
                             t.message ?: t.javaClass.simpleName
                         )
                     }
-                }
-            }.map { it.await() }
-
-            for (result in batch) {
-                results[result.name] = result
-                when (result.status) {
-                    InitTaskStatus.SUCCESS -> completed += result.name
-                    InitTaskStatus.FAILED,
-                    InitTaskStatus.SKIPPED -> failedOrSkipped += result.name
+                    resultChannel.send(result)
                 }
             }
         }
 
+        while (results.size < tasks.size) {
+            resolveBlockedTasks()
+            launchReadyTasks()
+            if (results.size == tasks.size) break
+            if (activeTasks == 0) break
+
+            val result = resultChannel.receive()
+            activeTasks -= 1
+            results[result.name] = result
+            when (result.status) {
+                InitTaskStatus.SUCCESS -> completed += result.name
+                InitTaskStatus.FAILED,
+                InitTaskStatus.SKIPPED -> failedOrSkipped += result.name
+            }
+        }
+
+        resultChannel.close()
         reporter.flowCompleted()
         val ordered = tasks.mapNotNull { results[it.name] }
         InitFlowResult(
