@@ -40,6 +40,11 @@ data class VoiceTraceProfile(
 
 class VoiceTraceProfileBuilder {
     var requestKey: String = "requestId"
+    var traceIdKey: String
+        get() = requestKey
+        set(value) {
+            requestKey = value
+        }
     private var boundary = RequestBoundaryRule()
     private val stages = mutableListOf<StageRule>()
     private val markers = mutableListOf<MarkerRule>()
@@ -72,6 +77,11 @@ class StageRuleBuilder(private val id: String) {
     var label: String = id
     var category: TraceCategory = TraceCategory.CUSTOM
     var showInConversation: Boolean = true
+    var showInTimeline: Boolean
+        get() = showInConversation
+        set(value) {
+            showInConversation = value
+        }
     var includeInDuration: Boolean = true
     var warnIfSlowMs: Long? = null
     var required: Boolean = false
@@ -94,6 +104,11 @@ class StageRuleBuilder(private val id: String) {
 class MarkerRuleBuilder(private val name: String) {
     var label: String = name
     var showInConversation: Boolean = true
+    var showInTimeline: Boolean
+        get() = showInConversation
+        set(value) {
+            showInConversation = value
+        }
     var includeInDuration: Boolean = false
     var category: TraceCategory = TraceCategory.CUSTOM
     var order: Int = 0
@@ -109,6 +124,9 @@ class MarkerRuleBuilder(private val name: String) {
 }
 
 fun voiceTraceProfile(block: VoiceTraceProfileBuilder.() -> Unit): VoiceTraceProfile =
+    VoiceTraceProfileBuilder().apply(block).build()
+
+fun linkTraceProfile(block: VoiceTraceProfileBuilder.() -> Unit = {}): LinkTraceProfile =
     VoiceTraceProfileBuilder().apply(block).build()
 
 private fun requireNonBlank(value: String, field: String): String {

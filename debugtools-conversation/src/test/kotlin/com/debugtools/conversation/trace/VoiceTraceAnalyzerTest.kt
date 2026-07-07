@@ -58,6 +58,47 @@ class VoiceTraceAnalyzerTest {
         })
     }
 
-    private fun event(requestId: String, name: String, type: TraceEventType, time: Long) =
-        VoiceTraceEvent(requestId, name, type, timestampUptimeMs = time, wallTimeMs = time)
+    @Test
+    fun `analyzer exposes graph nodes and adjacent timing edges`() {
+        val result = VoiceTraceAnalyzer(profile).analyze(
+            "req1",
+            listOf(
+                event("req1", "AsrBegin", TraceEventType.BEGIN, 100, mapOf("engine" to "local")),
+                event("req1", "vadEnd", TraceEventType.INSTANT, 130),
+                event("req1", "AsrEnd", TraceEventType.END, 260, mapOf("text" to "hello"))
+            )
+        )
+
+        assertEquals(listOf("AsrBegin", "vadEnd", "AsrEnd"), result.graphNodes.map { it.eventName })
+        assertEquals(listOf(30L, 130L), result.graphEdges.map { it.durationMs })
+        assertEquals("engine", result.graphNodes.first().attributes.keys.single())
+        assertEquals("ASR", result.graphNodes.first().ruleId)
+    }
+
+    @Test
+    fun `analyzer shows only first visible event occurrence but keeps all raw events`() {
+        val result = VoiceTraceAnalyzer(profile).analyze(
+            "req1",
+            listOf(
+                event("req1", "AsrBegin", TraceEventType.BEGIN, 100),
+                event("req1", "AsrEnd", TraceEventType.END, 180),
+                event("req1", "AsrBegin", TraceEventType.BEGIN, 240),
+                event("req1", "AsrEnd", TraceEventType.END, 520)
+            )
+        )
+
+        assertEquals(4, result.rawEvents.size)
+        assertEquals(listOf("ASR"), result.timelineItems.map { it.label })
+        assertEquals(80L, result.performanceDurationMs)
+        assertEquals(listOf("AsrBegin", "AsrEnd"), result.graphNodes.map { it.eventName })
+        assertTrue(result.issues.none { it.type == "DUPLICATE_STAGE_EVENT_IGNORED" })
+    }
+
+    private fun event(
+        requestId: String,
+        name: String,
+        type: TraceEventType,
+        time: Long,
+        attributes: Map<String, String> = emptyMap()
+    ) = VoiceTraceEvent(requestId, name, type, timestampUptimeMs = time, wallTimeMs = time, attributes = attributes)
 }

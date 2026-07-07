@@ -13,6 +13,8 @@ import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
 import com.debugtools.core.recording.RecordableModule
 import com.debugtools.core.recording.RecordingContext
+import com.debugtools.core.recording.RecordingIssue
+import com.debugtools.core.recording.RecordingIssueSeverity
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.startup.analyzer.StartupAnalyzer
 import com.debugtools.startup.protocol.IssueType
@@ -80,6 +82,7 @@ class StartupMonitorModule : DebugModule, RecordableModule, OverviewProvider {
         return ModuleRecordingResult(
             moduleId = moduleId,
             files = listOf(file),
+            issues = recordingIssues(sessions),
             summary = mapOf(
                 "sessions" to sessions.size.toString(),
                 "failedSteps" to failures.toString()
@@ -141,6 +144,43 @@ class StartupMonitorModule : DebugModule, RecordableModule, OverviewProvider {
                     OverviewMetric("未结束", neverEnded.toString(), if (neverEnded > 0) OverviewStatus.WARNING else OverviewStatus.OK)
                 )
             )
+        }
+
+        fun recordingIssues(sessions: List<StartupSession>): List<RecordingIssue> =
+            sessions.flatMap { session ->
+                StartupAnalyzer.analyze(session).map { issue ->
+                    RecordingIssue(
+                        severity = issue.toRecordingSeverity(),
+                        type = issue.type.name,
+                        detail = buildString {
+                            issue.stepName?.let { append(it).append(": ") }
+                            append(issue.detail)
+                        },
+                        moduleId = "startup",
+                        evidence = buildString {
+                            append("sessionId=").append(session.sessionId)
+                            issue.stepName?.let { append(", step=").append(it) }
+                            append(", detail=").append(issue.detail)
+                        },
+                        suggestion = issue.suggestion()
+                    )
+                }
+            }
+
+        private fun com.debugtools.startup.protocol.StartupIssue.toRecordingSeverity(): RecordingIssueSeverity =
+            when (severity) {
+                Severity.ERROR -> RecordingIssueSeverity.CRITICAL
+                Severity.WARN -> RecordingIssueSeverity.WARNING
+                Severity.INFO -> RecordingIssueSeverity.INFO
+            }
+
+        private fun com.debugtools.startup.protocol.StartupIssue.suggestion(): String = when (type) {
+            IssueType.ERROR -> "Check the initialization owner, dependency availability, and startup sessions.json details."
+            IssueType.SLOW -> "Inspect whether this initialization step can be lazy, cached, or moved off the critical path."
+            IssueType.NEVER_ENDED -> "Check whether the host app missed the matching end event or the initialization is stuck."
+            IssueType.DEP_VIOLATION -> "Check dependency ordering between startup steps."
+            IssueType.DEP_CYCLE -> "Remove the dependency cycle in startup step declarations."
+            IssueType.PARALLELIZABLE -> "Consider starting this independent initialization earlier or in parallel."
         }
     }
 }

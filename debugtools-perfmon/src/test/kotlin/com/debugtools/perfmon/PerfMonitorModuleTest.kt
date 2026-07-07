@@ -2,12 +2,16 @@ package com.debugtools.perfmon
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.debugtools.core.recording.RecordingContext
+import com.debugtools.core.recording.RecordingIssueSeverity
+import com.debugtools.perfmon.data.ProcessSample
 import com.debugtools.perfmon.data.ProcessTarget
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.nio.file.Files
 
 @RunWith(RobolectricTestRunner::class)
 class PerfMonitorModuleTest {
@@ -41,5 +45,33 @@ class PerfMonitorModuleTest {
         assertEquals(5, tooSmall.configForTest().updateIntervalSec)
         val tooBig = PerfMonitorModule.builder().updateIntervalSec(120).addProcessByPid(1).build()
         assertEquals(60, tooBig.configForTest().updateIntervalSec)
+    }
+
+    @Test fun `recording reports high cpu target as actionable issue`() {
+        val module = PerfMonitorModule.builder()
+            .cpuThresholdPercent(orange = 60, red = 80)
+            .addProcessByName("com.voice")
+            .build()
+        module.repositoryForTest().addSample(
+            ProcessSample(
+                target = ProcessTarget.ByName("com.voice"),
+                pid = 321,
+                timestamp = 1L,
+                cpuPercent = 95f,
+                rssBytes = 1024,
+                threadCount = 8,
+                alive = true
+            )
+        )
+        val dir = Files.createTempDirectory("perf-recording").toFile()
+
+        val result = module.onRecordingStop(RecordingContext("r1", 1, 1, dir))
+
+        val issue = result.issues.single()
+        assertEquals(RecordingIssueSeverity.CRITICAL, issue.severity)
+        assertEquals("HIGH_CPU", issue.type)
+        assertTrue(issue.detail.contains("com.voice"))
+        assertTrue(issue.evidence.contains("95%"))
+        assertTrue(issue.suggestion.contains("thread"))
     }
 }

@@ -50,11 +50,11 @@ class ConversationMonitorModule : DebugModule, RecordableModule, OverviewProvide
     override fun onDetach() { appContext = null }
 
     override fun createContentView(context: Context): View {
-        if (VoiceTrace.currentProfile() != null) {
+        if (LinkTrace.currentProfile() != null) {
             return VoiceTraceRootView(
                 context = context,
-                loadSnapshot = { VoiceTrace.snapshot() },
-                loadProfile = { VoiceTrace.currentProfile() }
+                loadSnapshot = { LinkTrace.snapshot() },
+                loadProfile = { LinkTrace.currentProfile() }
             )
         }
         return ConversationRootView(context) {
@@ -79,13 +79,13 @@ class ConversationMonitorModule : DebugModule, RecordableModule, OverviewProvide
         ModuleRecordingSnapshot(moduleId)
 
     override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
-        val profile = VoiceTrace.currentProfile()
-        val recorder = VoiceTrace.currentRecorder()
+        val profile = LinkTrace.currentProfile()
+        val recorder = LinkTrace.currentRecorder()
         if (profile == null || recorder == null) {
             val issue = RecordingIssue(
                 severity = RecordingIssueSeverity.INFO,
-                type = "VOICE_TRACE_NOT_INITIALIZED",
-                detail = "VoiceTrace.init was not called before recording stopped",
+                type = "LINK_TRACE_NOT_INITIALIZED",
+                detail = "LinkTrace.init was not called before recording stopped",
                 moduleId = moduleId
             )
             return ModuleRecordingResult(moduleId = moduleId, issues = listOf(issue))

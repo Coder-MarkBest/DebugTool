@@ -24,11 +24,13 @@ class HtmlRecordingReportWriter {
                 section { border: 1px solid #2f3b46; border-radius: 8px; padding: 16px; background: #141a20; }
                 h1, h2 { margin: 0 0 12px; }
                 table { border-collapse: collapse; width: 100%; }
-                th, td { border-bottom: 1px solid #2f3b46; padding: 8px; text-align: left; font-size: 13px; }
+                th, td { border-bottom: 1px solid #2f3b46; padding: 8px; text-align: left; font-size: 13px; vertical-align: top; }
                 .critical { color: #ff6b6b; }
                 .warning { color: #ffd166; }
                 .info { color: #8ecae6; }
                 .muted { color: #9aa7b2; }
+                .issue-detail { display: grid; gap: 4px; }
+                .label { color: #9aa7b2; font-size: 12px; }
               </style>
             </head>
             <body>
@@ -38,13 +40,8 @@ class HtmlRecordingReportWriter {
               </header>
               <main>
                 ${overview(report, issues)}
-                ${artifactSection("Voice Requests")}
-                ${artifactSection("Startup")}
-                ${artifactSection("Network")}
-                ${artifactSection("Performance")}
-                ${artifactSection("Audio")}
-                ${artifactSection("Stability")}
                 ${issuesSection(issues)}
+                ${artifactSection("Raw Artifacts")}
               </main>
             </body>
             </html>
@@ -65,22 +62,58 @@ class HtmlRecordingReportWriter {
     private fun artifactSection(title: String) = """
         <section>
           <h2>${escape(title)}</h2>
-          <div class="muted">See adjacent JSON artifacts for raw module data.</div>
+          <div class="muted">Voice Requests · Startup · Network · Performance · Audio · Stability</div>
+          <div class="muted">Adjacent JSON artifacts keep the raw module data used as evidence.</div>
         </section>
     """.trimIndent()
 
-    private fun issuesSection(issues: List<RecordingIssue>) = """
-        <section>
-          <h2>Issues</h2>
-          <table>
-            <tr><th>Severity</th><th>Module</th><th>Type</th><th>Detail</th></tr>
-            ${issues.joinToString("\n") { issue ->
+    private fun issuesSection(issues: List<RecordingIssue>): String {
+        val rows = if (issues.isEmpty()) {
+            """<tr><td colspan="4" class="muted">No diagnostic issues were reported.</td></tr>"""
+        } else {
+            issues.sortedWith(
+                compareBy<RecordingIssue> {
+                    when (it.severity) {
+                        RecordingIssueSeverity.CRITICAL -> 0
+                        RecordingIssueSeverity.WARNING -> 1
+                        RecordingIssueSeverity.INFO -> 2
+                    }
+                }.thenBy { it.moduleId.orEmpty() }
+            ).joinToString("\n") { issue ->
                 val cls = issue.severity.name.lowercase()
-                "<tr><td class=\"$cls\">$cls</td><td>${escape(issue.moduleId ?: "")}</td><td>${escape(issue.type)}</td><td>${escape(issue.detail)}</td></tr>"
-            }}
-          </table>
-        </section>
-    """.trimIndent()
+                """
+                    <tr>
+                      <td class="$cls">$cls</td>
+                      <td>${escape(issue.moduleId ?: "")}</td>
+                      <td>${escape(issue.type)}</td>
+                      <td>
+                        <div class="issue-detail">
+                          <div>${escape(issue.detail)}</div>
+                          ${optionalLine("Evidence", issue.evidence)}
+                          ${optionalLine("Suggestion", issue.suggestion)}
+                        </div>
+                      </td>
+                    </tr>
+                """.trimIndent()
+            }
+        }
+        return """
+            <section>
+              <h2>Diagnostic Issues</h2>
+              <table>
+                <tr><th>Severity</th><th>Module</th><th>Type</th><th>Diagnosis</th></tr>
+                $rows
+              </table>
+            </section>
+        """.trimIndent()
+    }
+
+    private fun optionalLine(label: String, value: String): String =
+        if (value.isBlank()) {
+            ""
+        } else {
+            """<div><span class="label">$label:</span> ${escape(value)}</div>"""
+        }
 
     private fun escape(value: String): String =
         value.replace("&", "&amp;")

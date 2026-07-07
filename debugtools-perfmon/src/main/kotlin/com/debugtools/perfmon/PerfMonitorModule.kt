@@ -13,6 +13,8 @@ import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
 import com.debugtools.core.recording.RecordableModule
 import com.debugtools.core.recording.RecordingContext
+import com.debugtools.core.recording.RecordingIssue
+import com.debugtools.core.recording.RecordingIssueSeverity
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.perfmon.data.ProcessDetail
 import com.debugtools.perfmon.data.ProcessSample
@@ -86,6 +88,7 @@ class PerfMonitorModule private constructor(
         return ModuleRecordingResult(
             moduleId = moduleId,
             files = listOf(file),
+            issues = performanceIssues(last, config),
             summary = mapOf(
                 "targets" to snap.series.size.toString(),
                 "samples" to samples.toString(),
@@ -168,6 +171,7 @@ class PerfMonitorModule private constructor(
 
     internal fun targetsForTest(): List<ProcessTarget> = targets
     internal fun configForTest(): Config = config
+    internal fun repositoryForTest(): PerfRepository = repository
 
     private fun ProcessSample.toJson(): JSONObject = JSONObject().apply {
         put("target", target.key)
@@ -197,6 +201,44 @@ class PerfMonitorModule private constructor(
         put("name", name)
         put("cpuPercent", cpuPercent.toDouble())
         put("state", state.name)
+    }
+
+    private fun performanceIssues(last: List<ProcessSample>, config: Config): List<RecordingIssue> {
+        val deadIssues = last.filter { !it.alive }.map { sample ->
+            RecordingIssue(
+                severity = RecordingIssueSeverity.CRITICAL,
+                type = "PROCESS_UNAVAILABLE",
+                detail = "${sample.target.label()} is not alive",
+                moduleId = moduleId,
+                evidence = "target=${sample.target.key}, pid=${sample.pid ?: "none"}, timestamp=${sample.timestamp}",
+                suggestion = "Check whether the monitored process crashed, was killed, or was not started."
+            )
+        }
+        val cpuIssues = last
+            .filter { it.alive && it.cpuPercent >= config.cpuRedThreshold }
+            .sortedByDescending { it.cpuPercent }
+            .take(3)
+            .map { sample ->
+                RecordingIssue(
+                    severity = RecordingIssueSeverity.CRITICAL,
+                    type = "HIGH_CPU",
+                    detail = "${sample.target.label()} CPU is above red threshold",
+                    moduleId = moduleId,
+                    evidence = "%.0f%% >= %d%%, pid=%s, threads=%d".format(
+                        sample.cpuPercent,
+                        config.cpuRedThreshold,
+                        sample.pid?.toString() ?: "none",
+                        sample.threadCount
+                    ),
+                    suggestion = "Open the performance tab or perf-series.json and inspect thread-level samples for this process."
+                )
+            }
+        return deadIssues + cpuIssues
+    }
+
+    private fun ProcessTarget.label(): String = when (this) {
+        is ProcessTarget.ByName -> processName
+        is ProcessTarget.ByPid -> "pid:$pid"
     }
 
     class Builder {

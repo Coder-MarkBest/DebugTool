@@ -14,11 +14,11 @@ import com.debugtools.core.settings.SettingItem
 import com.debugtools.core.settings.SettingsRenderer
 
 /**
- * 模拟语音助手业务模块，展示所有 5 种原子设置项类型。
+ * 模拟业务设置模块，展示所有 5 种原子设置项类型。
  */
 class VoiceAssistantModule : DebugModule {
     override val moduleId = "voice_assistant"
-    override val tabTitle = "语音助手"
+    override val tabTitle = "设置项"
 
     private val renderer = SettingsRenderer()
     private var storage: SettingsStorage? = null

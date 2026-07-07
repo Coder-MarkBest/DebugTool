@@ -1,11 +1,14 @@
 package com.debugtools.okhttp
 
 import com.debugtools.core.overview.OverviewStatus
+import com.debugtools.core.recording.RecordingContext
+import com.debugtools.core.recording.RecordingIssueSeverity
 import com.debugtools.okhttp.data.HttpRecord
 import com.debugtools.okhttp.repository.NetworkRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class NetworkCaptureModuleOverviewTest {
     @Test fun `overview reports http errors`() {
@@ -31,11 +34,26 @@ class NetworkCaptureModuleOverviewTest {
         assertEquals(1, summary.errorCount)
     }
 
-    private fun record(responseCode: Int) = HttpRecord(
+    @Test fun `recording exports top network failure as actionable issue`() {
+        val module = NetworkCaptureModule.create()
+        module.repositoryForTest().addHttp(record(responseCode = 503, url = "https://example.test/nlu?q=1"))
+        val dir = Files.createTempDirectory("network-recording").toFile()
+
+        val result = module.onRecordingStop(RecordingContext("r1", 1, 1, dir))
+
+        val issue = result.issues.single()
+        assertEquals(RecordingIssueSeverity.CRITICAL, issue.severity)
+        assertEquals("HTTP_ERROR", issue.type)
+        assertTrue(issue.detail.contains("GET /nlu"))
+        assertTrue(issue.evidence.contains("HTTP 503"))
+        assertTrue(issue.suggestion.contains("status"))
+    }
+
+    private fun record(responseCode: Int, url: String = "https://example.test") = HttpRecord(
         id = "r1",
         timestamp = 1L,
         method = "GET",
-        url = "https://example.test",
+        url = url,
         protocol = "HTTP/1.1",
         requestHeaders = emptyList(),
         requestBody = null,

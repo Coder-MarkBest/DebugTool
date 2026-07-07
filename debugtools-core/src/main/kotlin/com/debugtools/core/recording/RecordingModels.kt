@@ -8,7 +8,9 @@ data class RecordingIssue(
     val severity: RecordingIssueSeverity,
     val type: String,
     val detail: String,
-    val moduleId: String? = null
+    val moduleId: String? = null,
+    val evidence: String = "",
+    val suggestion: String = ""
 )
 
 data class RecordingContext(

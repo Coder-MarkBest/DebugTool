@@ -20,13 +20,15 @@ import androidx.lifecycle.lifecycleScope
 import com.debugtools.audiomon.AudioMonitorModule
 import com.debugtools.startup.StartupMonitorModule
 import com.debugtools.conversation.ConversationMonitorModule
-import com.debugtools.conversation.VoiceTrace
+import com.debugtools.conversation.LinkTrace
+import com.debugtools.conversation.trace.LinkTraceEvent
+import com.debugtools.conversation.trace.LinkTraceProfile
+import com.debugtools.conversation.trace.MarkerRule
 import com.debugtools.conversation.trace.TraceCategory
 import com.debugtools.conversation.trace.TraceEventType
 import com.debugtools.conversation.trace.TraceOutcome
-import com.debugtools.conversation.trace.VoiceTraceEvent
-import com.debugtools.conversation.trace.VoiceTraceProfile
-import com.debugtools.conversation.trace.voiceTraceProfile
+import com.debugtools.conversation.trace.VoiceAssistantTraceMapping
+import com.debugtools.conversation.trace.VoiceAssistantTraceProfiles
 import com.debugtools.stability.StabilityModule
 import com.debugtools.stability.StabilityMonitor
 import com.debugtools.core.DebugTools
@@ -216,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(btnGenStartup)
 
         btnGenConversation = Button(this).apply {
-            text = "生成示例对话链路（3 个 requestId）"
+            text = "生成示例对话链路（4 个 requestId）"
             isEnabled = false
             setOnClickListener { generateSampleConversation() }
         }
@@ -276,7 +278,7 @@ class MainActivity : AppCompatActivity() {
         if (debugToolsInitialized) { toast("已初始化"); return }
         try {
             (application as SampleApplication).voiceModule = voiceModule
-            VoiceTrace.init(applicationContext, sampleVoiceTraceProfile())
+            LinkTrace.init(applicationContext, sampleVoiceTraceProfile())
             DebugTools.builder(this)
                 .processMode(ProcessMode.ATTACHED)
                 .register(perfModule)
@@ -322,7 +324,7 @@ class MainActivity : AppCompatActivity() {
             btnGenConversation.isEnabled = true
             StabilityMonitor.init(applicationContext, listOf("com.debugtools.sample", "system_server"))
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络（质量 + 抓包） / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
+            appendLog("   已注册模块: 设置项 / 网络（质量 + 抓包） / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }
@@ -499,138 +501,135 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun sampleVoiceTraceProfile(): VoiceTraceProfile = voiceTraceProfile {
-        requestKey = "requestId"
-        requestBoundary {
-            startEvents = listOf("vadBegin")
-            exitEvents = listOf("dialogExit")
-            fallbackTimeoutMs = 30_000
-        }
-        stage("VAD") {
-            begin = "vadBegin"
-            end = "vadEnd"
-            label = "VAD"
-            category = TraceCategory.VAD
-            warnIfSlowMs = 600
-            required = true
-            order = 10
-        }
-        stage("ASR") {
-            begin = "AsrBegin"
-            end = "AsrEnd"
-            label = "ASR"
-            category = TraceCategory.ASR
-            warnIfSlowMs = 450
-            required = true
-            order = 20
-        }
-        stage("NLU") {
-            begin = "NluBegin"
-            end = "NluEnd"
-            label = "NLU"
-            category = TraceCategory.NLU
-            warnIfSlowMs = 300
-            required = true
-            order = 30
-        }
-        stage("TOOL") {
-            begin = "ToolBegin"
-            end = "ToolEnd"
-            label = "工具调用"
-            category = TraceCategory.TOOL
-            showInConversation = true
-            includeInDuration = true
-            warnIfSlowMs = 700
-            order = 40
-        }
-        stage("TTS") {
-            begin = "TtsBegin"
-            end = "TtsEnd"
-            label = "TTS"
-            category = TraceCategory.TTS
-            showInConversation = true
-            includeInDuration = false
-            order = 50
-        }
-        marker("AsrPartial") {
-            label = "ASR 中间结果"
-            category = TraceCategory.ASR
-            showInConversation = true
-            includeInDuration = false
-            order = 21
-        }
-        marker("CacheHit") {
-            label = "缓存命中"
-            category = TraceCategory.CUSTOM
-            showInConversation = false
-            includeInDuration = false
-            order = 35
-        }
-    }
+    private fun sampleVoiceTraceProfile(): LinkTraceProfile = VoiceAssistantTraceProfiles.standard(
+        mapping = VoiceAssistantTraceMapping(
+            startEvents = listOf("vadBegin"),
+            exit = "dialogExit",
+            vadBegin = "vadBegin",
+            vadEnd = "vadEnd",
+            executionEngineBegin = "ToolBegin",
+            executionEngineEnd = "ToolEnd"
+        ),
+        extraMarkers = listOf(
+            MarkerRule(
+                name = "AsrPartial",
+                label = "ASR 中间结果",
+                showInConversation = true,
+                includeInDuration = false,
+                category = TraceCategory.ASR,
+                order = 21
+            ),
+            MarkerRule(
+                name = "CacheHit",
+                label = "缓存命中",
+                showInConversation = false,
+                includeInDuration = false,
+                category = TraceCategory.CUSTOM,
+                order = 35
+            )
+        )
+    )
 
-    /** Write varied requestId-first voice trace events to the new protocol. */
+    /** Write varied requestId-first link trace events to the new protocol. */
     private fun generateSampleConversation() {
         appendLog("→ 写入 requestId 示例对话链路…")
         lifecycleScope.launch {
+            emitFullProfileRequest("demo-request-full")
             emitSuccessfulRequest("demo-request-1")
             emitNluFailureRequest("demo-request-2")
             emitExitWithoutRequestId("demo-request-3")
-            appendLog("✅ 已写入 3 个 requestId 示例 — 打开「对话链路」Tab 查看")
+            appendLog("✅ 已写入 4 个 requestId 示例 — 打开「对话链路」Tab 查看")
         }
     }
 
+    private suspend fun emitFullProfileRequest(requestId: String) {
+        emitStage(requestId, "vadBegin", "vadEnd", 40, mapOf("source" to "wake_word"))
+        emitStage(requestId, "AsrBegin", "AsrEnd", 60, endAttrs = mapOf("text" to "打开座椅加热并导航回家")) {
+            LinkTrace.instant(requestId, "AsrPartial", mapOf("text" to "打开座椅"))
+        }
+        emitStage(requestId, "AsrArbitrationBegin", "AsrArbitrationEnd", 35, endAttrs = mapOf("winner" to "cloud_asr"))
+        emitStage(requestId, "NluBegin", "NluEnd", 45, endAttrs = mapOf("intent" to "multi_action"))
+        emitStage(requestId, "NluArbitrationBegin", "NluArbitrationEnd", 30, endAttrs = mapOf("winner" to "vehicle_domain"))
+        emitStage(requestId, "ToolBegin", "ToolEnd", 70, beginAttrs = mapOf("tool" to "vehicle_control"), endAttrs = mapOf("result" to "seat_heat_on"))
+        emitStage(requestId, "TtsTextReceivedBegin", "TtsTextReceivedEnd", 25, endAttrs = mapOf("text" to "已为你打开座椅加热，正在导航回家"))
+        emitStage(requestId, "AudioFocusBegin", "AudioFocusEnd", 20, endAttrs = mapOf("focus" to "granted"))
+        emitStage(requestId, "CacheReadBegin", "CacheReadEnd", 20, endAttrs = mapOf("hit" to "true"))
+        LinkTrace.instant(requestId, "CacheHit", mapOf("key" to "home_route:last"))
+        emitStage(requestId, "SynthesisBegin", "SynthesisEnd", 80, endAttrs = mapOf("engine" to "local_tts"))
+        emitStage(requestId, "AudioTrackWriteBegin", "AudioTrackWriteEnd", 25, endAttrs = mapOf("frames" to "4096"))
+        emitStage(requestId, "TtsBegin", "TtsEnd", 90)
+        LinkTrace.finish(requestId, TraceOutcome.SUCCESS)
+    }
+
+    private suspend fun emitStage(
+        requestId: String,
+        beginName: String,
+        endName: String,
+        durationMs: Long,
+        beginAttrs: Map<String, String> = emptyMap(),
+        endAttrs: Map<String, String> = emptyMap(),
+        during: (suspend () -> Unit)? = null
+    ) {
+        LinkTrace.begin(requestId, beginName, beginAttrs)
+        val beforeDuring = (durationMs / 2).coerceAtLeast(1)
+        delay(beforeDuring)
+        during?.invoke()
+        delay((durationMs - beforeDuring).coerceAtLeast(1))
+        LinkTrace.end(requestId, endName, endAttrs)
+    }
+
     private suspend fun emitSuccessfulRequest(requestId: String) {
-        VoiceTrace.begin(requestId, "vadBegin", mapOf("source" to "wake_word"))
+        LinkTrace.begin(requestId, "vadBegin", mapOf("source" to "wake_word"))
         delay(120)
-        VoiceTrace.end(requestId, "vadEnd")
-        VoiceTrace.begin(requestId, "AsrBegin")
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
         delay(130)
-        VoiceTrace.instant(requestId, "AsrPartial", mapOf("text" to "导航到最近"))
+        LinkTrace.instant(requestId, "AsrPartial", mapOf("text" to "导航到最近"))
         delay(160)
-        VoiceTrace.end(requestId, "AsrEnd", mapOf("text" to "导航到最近的加油站"))
-        VoiceTrace.begin(requestId, "NluBegin")
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "导航到最近的加油站"))
+        LinkTrace.begin(requestId, "NluBegin")
         delay(80)
-        VoiceTrace.end(requestId, "NluEnd", mapOf("intent" to "navigate", "dest" to "加油站"))
-        VoiceTrace.instant(requestId, "CacheHit", mapOf("key" to "poi:last_gas_station"))
-        VoiceTrace.begin(requestId, "ToolBegin", mapOf("tool" to "map_search"))
+        LinkTrace.end(requestId, "NluEnd", mapOf("intent" to "navigate", "dest" to "加油站"))
+        LinkTrace.instant(requestId, "CacheHit", mapOf("key" to "poi:last_gas_station"))
+        LinkTrace.begin(requestId, "ToolBegin", mapOf("tool" to "map_search"))
         delay(220)
-        VoiceTrace.end(requestId, "ToolEnd", mapOf("result" to "ok"))
-        VoiceTrace.begin(requestId, "TtsBegin")
+        LinkTrace.end(requestId, "ToolEnd", mapOf("result" to "ok"))
+        LinkTrace.begin(requestId, "TtsBegin")
         delay(180)
-        VoiceTrace.end(requestId, "TtsEnd")
-        VoiceTrace.finish(requestId, TraceOutcome.SUCCESS)
+        LinkTrace.end(requestId, "TtsEnd")
+        LinkTrace.finish(requestId, TraceOutcome.SUCCESS)
     }
 
     private suspend fun emitNluFailureRequest(requestId: String) {
-        VoiceTrace.begin(requestId, "vadBegin")
+        LinkTrace.begin(requestId, "vadBegin")
         delay(60)
-        VoiceTrace.end(requestId, "vadEnd")
-        VoiceTrace.begin(requestId, "AsrBegin")
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
         delay(520)
-        VoiceTrace.end(requestId, "AsrEnd", mapOf("text" to "打开空气"))
-        VoiceTrace.begin(requestId, "NluBegin")
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "打开空气"))
+        LinkTrace.begin(requestId, "NluBegin")
         delay(90)
-        VoiceTrace.mark(VoiceTraceEvent(
-            requestId = requestId,
+        LinkTrace.mark(LinkTraceEvent(
+            traceId = requestId,
             name = "NluError",
             type = TraceEventType.ERROR,
             timestampUptimeMs = SystemClock.uptimeMillis(),
             attributes = mapOf("reason" to "IntentNotFound")
         ))
-        VoiceTrace.finish(requestId, TraceOutcome.FAILED)
+        LinkTrace.finish(requestId, TraceOutcome.FAILED)
     }
 
     private suspend fun emitExitWithoutRequestId(requestId: String) {
-        VoiceTrace.begin(requestId, "vadBegin")
+        LinkTrace.begin(requestId, "vadBegin")
         delay(70)
-        VoiceTrace.end(requestId, "vadEnd")
-        VoiceTrace.begin(requestId, "AsrBegin")
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
         delay(110)
-        VoiceTrace.end(requestId, "AsrEnd", mapOf("text" to "播放周杰伦的歌"))
-        VoiceTrace.begin(requestId, "NluBegin")
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "播放周杰伦的歌"))
+        LinkTrace.begin(requestId, "NluBegin")
         delay(70)
-        VoiceTrace.end(requestId, "NluEnd", mapOf("intent" to "play_music"))
-        VoiceTrace.finish(requestId = null, outcome = TraceOutcome.SUCCESS)
+        LinkTrace.end(requestId, "NluEnd", mapOf("intent" to "play_music"))
+        LinkTrace.finish(traceId = null, outcome = TraceOutcome.SUCCESS)
     }
 
     /** Write 5 varied sample startup sessions to the store so 「启动链路」 is populated without restarting. */

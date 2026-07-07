@@ -1,70 +1,83 @@
 # debugtools-conversation
 
-对话链路追踪:接入方写适配层把现有对话日志映射到通用协议 → `submitTurn(turn)` 提交,SDK 记录、持久化(最近 50 次对话,App 私有目录卸载即删)、三层导航(会话→轮次→阶段时间线)+ 自动诊断。
+`debugtools-conversation` shows a staged business link for one trace id. The default use case is a voice-assistant requestId, but the same protocol can map payment, navigation, media, car-control, page-load, or any other begin/end style business flow.
 
-## 设计理念
+## Recommended Voice Assistant Setup
 
-DebugTool 定义**通用对话轨迹协议**,接入方已有完整链路日志,仅需写一个**适配层**把原始日志字段映射到协议数据类(`ConversationTurn` / `TurnStage`)即可。DebugTool 对阶段语义零理解,只据协议字段做展示与诊断。
+Use the built-in voice-assistant preset first. It gives the UI stable stage semantics for VAD, ASR, ASR arbitration, NLU, NLU arbitration, execution engine, TTS text, audio focus, cache read, synthesis, AudioTrack write, and TTS.
 
-## 接入(3 步)
-
-**1) Application.onCreate 尽早 init:**
 ```kotlin
-ConversationTracer.init(context)
-```
-
-**2) 写适配层 + 提交整轮:**
-```kotlin
-// 适配层:你的原始日志 → ConversationTurn
-fun adaptLogToTurn(raw: MyVoiceLog): ConversationTurn {
-    return ConversationTurn(
-        turnId = raw.traceId, turnIndex = raw.roundIndex,
-        sessionId = raw.dialogId, startUptimeMs = raw.startTime,
-        endUptimeMs = raw.endTime, userInput = raw.asrFinalText,
-        stages = listOf(
-            TurnStage("ASR", 0, 500, SUCCESS, "[audio]", raw.asrText, null, "asr"),
-            TurnStage("NLU", 500, 550, SUCCESS, raw.asrText, raw.nluJson, null, "nlu"),
-            // ...
-        ),
-        outcome = if (raw.error == null) TurnOutcome.SUCCESS else TurnOutcome.FAILED,
-        tags = raw.domains
+LinkTrace.init(
+    context,
+    VoiceAssistantTraceProfiles.standard(
+        mapping = VoiceAssistantTraceMapping(exit = "dialogExit")
     )
+)
+
+LinkTrace.begin(requestId, "vadBegin")
+LinkTrace.end(requestId, "vadEnd")
+LinkTrace.begin(requestId, "AsrBegin")
+LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "打开空调"))
+LinkTrace.begin(requestId, "NluBegin")
+LinkTrace.end(requestId, "NluEnd", mapOf("intent" to "ac_on"))
+LinkTrace.finish(requestId)
+```
+
+Default built-in rules:
+
+| Stage id | Default begin | Default end | Label |
+|----------|---------------|-------------|-------|
+| `VAD` | `VadBegin` | `VadEnd` | VAD |
+| `ASR` | `AsrBegin` | `AsrEnd` | ASR |
+| `ASR_ARBITRATION` | `AsrArbitrationBegin` | `AsrArbitrationEnd` | ASR仲裁 |
+| `NLU` | `NluBegin` | `NluEnd` | NLU |
+| `NLU_ARBITRATION` | `NluArbitrationBegin` | `NluArbitrationEnd` | NLU仲裁 |
+| `EXECUTION_ENGINE` | `ExecutionEngineBegin` | `ExecutionEngineEnd` | 执行引擎 |
+| `TTS_TEXT_RECEIVED` | `TtsTextReceivedBegin` | `TtsTextReceivedEnd` | TTS收到文本 |
+| `AUDIO_FOCUS` | `AudioFocusBegin` | `AudioFocusEnd` | 申请焦点 |
+| `CACHE_READ` | `CacheReadBegin` | `CacheReadEnd` | 读取缓存 |
+| `TTS_SYNTHESIS` | `SynthesisBegin` | `SynthesisEnd` | TTS合成 |
+| `AUDIO_TRACK_WRITE` | `AudioTrackWriteBegin` | `AudioTrackWriteEnd` | 写入AudioTrack |
+| `TTS` | `TtsBegin` | `TtsEnd` | TTS |
+
+Register the visible module:
+
+```kotlin
+DebugTools.builder(context)
+    .register(ConversationMonitorModule())
+    .build()
+```
+
+## Custom Business Flow
+
+For non-voice business, define a profile with neutral names. The only required concept is one id for one request.
+
+```kotlin
+val profile = linkTraceProfile {
+    traceIdKey = "orderId"
+    requestBoundary { exitEvents = listOf("OrderFinished") }
+    stage("pay") {
+        begin = "PayBegin"
+        end = "PayEnd"
+        label = "Payment"
+        showInTimeline = true
+        includeInDuration = true
+        warnIfSlowMs = 1_000
+        required = true
+    }
 }
-// 提交
-ConversationTracer.submitTurn(adaptLogToTurn(rawLog))
+LinkTrace.init(context, profile)
 ```
 
-**3) 会话结束时标记(触发持久化):**
-```kotlin
-ConversationTracer.endSession(sessionId)
-// 可选 startSession(id, metadata) 开头,不调也懒创建
-```
+## Diagnostics
 
-注册模块:
-```kotlin
-DebugTools.builder(context).register(ConversationMonitorModule()).build()
-```
+The analyzer reports:
 
-## 看什么
+- missing required stages,
+- slow stages over `warnIfSlowMs`,
+- error events,
+- exit events without trace id when they must be matched to an active request.
 
-- **L1 会话列表**:最近 50 次对话,每次:轮数、✓/✗、是否进行中。点进 →
-- **L2 轮次列表**:该次所有轮次,每轮一行:#N、截断 userInput、色标 outcome、耗时。点进 →
-- **L3 轮次详情**:阶段时间线(从左到右,绿/红/灰色块)+ 每阶段的 input/output/error + 诊断。
+Each rule is configured per stage or marker, so hosts can decide what appears in the timeline and what contributes to performance duration.
 
-## 自动诊断
-
-| 类型 | 含义 |
-|------|------|
-| 阶段失败 | 任意 stage FAILED |
-| 慢阶段 | 耗时 > 500ms |
-| 轮超时 | outcome == TIMEOUT |
-| 轮中断 | outcome == ABORTED |
-| 流水线间隙 | 前后阶段不连续,有空闲间隔 |
-
-## 约束
-
-- 仅同进程上报;数据存 `filesDir/conversation`,保留最近 50 次,**随 App 卸载删除**;不做网络上报。
-- 阶段名不限枚举,接入方自定;Tool 只展示不校验。
-- 整轮提交(`submitTurn`),不做流式逐阶段上报。
-- 不做 confidence。
-- 后续快照录制模块会聚合本模块数据。
+`VoiceTrace` remains as a compatibility wrapper. New code should use `LinkTrace`.

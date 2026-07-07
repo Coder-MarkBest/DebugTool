@@ -105,7 +105,10 @@ class NetworkModule private constructor(
             moduleId = moduleId,
             summary = mapOf("state" to stateText)
         )
-        return result.copy(moduleId = moduleId)
+        return result.copy(
+            moduleId = moduleId,
+            issues = result.issues.map { it.copy(moduleId = moduleId) }
+        )
     }
 
     override fun onAttach(context: Context, storage: SettingsStorage) {

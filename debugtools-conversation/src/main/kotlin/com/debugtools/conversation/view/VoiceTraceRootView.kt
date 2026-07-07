@@ -6,10 +6,12 @@ import android.graphics.Typeface
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
+import android.widget.HorizontalScrollView
 import android.widget.ScrollView
 import android.widget.TextView
 import com.debugtools.conversation.trace.AnalyzedVoiceRequest
 import com.debugtools.conversation.trace.TraceIssueSeverity
+import com.debugtools.conversation.trace.TraceGraphNode
 import com.debugtools.conversation.trace.VoiceTraceAnalyzer
 import com.debugtools.conversation.trace.VoiceTraceProfile
 import com.debugtools.conversation.trace.VoiceTraceSnapshot
@@ -72,11 +74,18 @@ class VoiceTraceRootView(
         content.addView(header(request.requestId))
         content.addView(dim("性能耗时 ${request.performanceDurationMs}ms · raw events ${request.rawEvents.size}"))
 
-        content.addView(header("链路"))
-        request.timelineItems.forEach { item ->
-            val dur = item.durationMs?.let { "${it}ms" } ?: "marker"
-            content.addView(dim("${item.label} · $dur · ${item.category.name}"))
-        }
+        content.addView(header("链路耗时图"))
+        val detail = dim("")
+        content.addView(HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = true
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+            addView(TraceGraphView(context).apply {
+                setGraph(request.graphNodes, request.graphEdges) { node ->
+                    detail.text = nodeDetail(node)
+                }
+            })
+        })
+        content.addView(detail)
 
         content.addView(header("问题"))
         if (request.issues.isEmpty()) {
@@ -95,6 +104,28 @@ class VoiceTraceRootView(
         content.addView(header("Raw events"))
         request.rawEvents.forEach { event ->
             content.addView(dim("${event.timestampUptimeMs} · ${event.type.name} · ${event.name}"))
+        }
+    }
+
+    private fun nodeDetail(node: TraceGraphNode): String {
+        val attrs = if (node.attributes.isEmpty()) {
+            "attributes: 无"
+        } else {
+            node.attributes.entries.joinToString("\n") { (key, value) -> "$key = $value" }
+        }
+        return buildString {
+            append(node.label)
+            append(" · ")
+            append(node.eventName)
+            append(" · ")
+            append(node.timestampUptimeMs)
+            append("ms")
+            append("\n")
+            append("type = ").append(node.type.name)
+            append(" · category = ").append(node.category.name)
+            node.ruleId?.let { append(" · rule = ").append(it) }
+            append("\n")
+            append(attrs)
         }
     }
 

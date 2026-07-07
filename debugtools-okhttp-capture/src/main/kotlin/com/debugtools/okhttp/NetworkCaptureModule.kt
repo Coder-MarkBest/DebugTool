@@ -13,6 +13,8 @@ import com.debugtools.core.recording.ModuleRecordingResult
 import com.debugtools.core.recording.ModuleRecordingSnapshot
 import com.debugtools.core.recording.RecordableModule
 import com.debugtools.core.recording.RecordingContext
+import com.debugtools.core.recording.RecordingIssue
+import com.debugtools.core.recording.RecordingIssueSeverity
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.okhttp.data.HttpRecord
 import com.debugtools.okhttp.data.WebSocketFrame
@@ -37,6 +39,7 @@ import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.URI
 import java.util.UUID
 
 /**
@@ -74,7 +77,8 @@ class NetworkCaptureModule private constructor(
         val httpCount: Int,
         val webSocketCount: Int,
         val webSocketFrameCount: Int,
-        val errorCount: Int
+        val errorCount: Int,
+        val topIssue: String? = null
     )
 
     fun httpInterceptor(): Interceptor = CapturingInterceptor(repository, config, correlator)
@@ -89,7 +93,8 @@ class NetworkCaptureModule private constructor(
             httpCount = snap.httpRecords.size,
             webSocketCount = snap.webSocketSessions.size,
             webSocketFrameCount = snap.webSocketSessions.sumOf { it.frames.size },
-            errorCount = errors
+            errorCount = errors,
+            topIssue = topNetworkIssue(snap)?.detail
         )
     }
 
@@ -138,6 +143,7 @@ class NetworkCaptureModule private constructor(
         return ModuleRecordingResult(
             moduleId = moduleId,
             files = listOf(file),
+            issues = listOfNotNull(topNetworkIssue(snap)),
             summary = mapOf(
                 "httpRecords" to snap.httpRecords.size.toString(),
                 "webSocketSessions" to snap.webSocketSessions.size.toString(),
@@ -145,6 +151,53 @@ class NetworkCaptureModule private constructor(
             )
         )
     }
+
+    private fun topNetworkIssue(snap: NetworkRepository.Snapshot): RecordingIssue? {
+        val failedHttp = snap.httpRecords.lastOrNull { it.failure != null }
+        if (failedHttp != null) return failedHttp.toIssue(isCritical = true)
+        val serverHttp = snap.httpRecords.lastOrNull { it.responseCode >= 500 }
+        if (serverHttp != null) return serverHttp.toIssue(isCritical = true)
+        val clientHttp = snap.httpRecords.lastOrNull { it.responseCode in 400..499 }
+        if (clientHttp != null) return clientHttp.toIssue(isCritical = false)
+        val failedWs = snap.webSocketSessions.lastOrNull { it.failure != null }
+        return failedWs?.toIssue()
+    }
+
+    private fun HttpRecord.toIssue(isCritical: Boolean): RecordingIssue {
+        val reason = failure ?: "HTTP $responseCode"
+        return RecordingIssue(
+            severity = if (isCritical) RecordingIssueSeverity.CRITICAL else RecordingIssueSeverity.WARNING,
+            type = if (failure != null) "HTTP_FAILURE" else "HTTP_ERROR",
+            detail = "$method ${urlLabel()} failed",
+            moduleId = moduleId,
+            evidence = "$reason, duration=${durationMs}ms, recordId=$id",
+            suggestion = if (failure != null) {
+                "Check connectivity, DNS/TLS, timeout, and the raw exception in network-summary.json."
+            } else {
+                "Check server status, request parameters, and response body in network-summary.json."
+            }
+        )
+    }
+
+    private fun WebSocketSession.toIssue(): RecordingIssue = RecordingIssue(
+        severity = RecordingIssueSeverity.CRITICAL,
+        type = "WEBSOCKET_FAILURE",
+        detail = "WS ${urlLabel()} failed",
+        moduleId = moduleId,
+        evidence = "${failure.orEmpty()}, sessionId=$sessionId, frames=${frames.size}",
+        suggestion = "Check WebSocket handshake, close reason, and frame sequence in network-summary.json."
+    )
+
+    private fun HttpRecord.urlLabel(): String = urlLabel(url)
+
+    private fun WebSocketSession.urlLabel(): String = urlLabel(url)
+
+    private fun urlLabel(raw: String): String =
+        runCatching {
+            val uri = URI(raw)
+            val path = uri.rawPath.takeUnless { it.isNullOrBlank() } ?: "/"
+            if (uri.rawQuery.isNullOrBlank()) path else "$path?..."
+        }.getOrElse { raw }
 
     override fun createContentView(context: Context): View {
         val view = NetworkCaptureRootView(
