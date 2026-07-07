@@ -1,6 +1,6 @@
 package com.debugtools.startupinit.debugtools
 
-import androidx.test.core.app.ApplicationProvider
+import android.content.Context
 import com.debugtools.startup.AppStartupMonitor
 import com.debugtools.startup.protocol.StepStatus
 import com.debugtools.startupinit.StartupInitFlow
@@ -11,6 +11,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class StartupMonitorReporterTest {
@@ -71,5 +72,9 @@ class StartupMonitorReporterTest {
             isAccessible = true
             setBoolean(AppStartupMonitor, false)
         }
+    }
+
+    private object ApplicationProvider {
+        fun getApplicationContext(): Context = RuntimeEnvironment.getApplication()
     }
 }
