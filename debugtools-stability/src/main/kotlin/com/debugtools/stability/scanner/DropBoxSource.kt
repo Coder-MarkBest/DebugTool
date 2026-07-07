@@ -51,26 +51,14 @@ class DropBoxSource(private val dropBox: DropBoxManager) : CrashSource {
     private fun parseDropBoxEntry(
         type: CrashType, tag: String, entry: DropBoxManager.Entry, text: String
     ): CrashEntry? {
-        val procName = extractProcessName(text).ifEmpty { return null }
+        val procName = CrashTextParser.extractProcessName(text) ?: return null
         return CrashEntry(
             type = type,
             processName = procName,
             timestamp = entry.timeMillis,
             sourcePath = "DropBox:$tag",
             stackTrace = text,
-            pid = extractPid(text)
+            pid = CrashTextParser.extractPid(text)
         )
-    }
-
-    /** "Process: com.example.app" → "com.example.app" */
-    private fun extractProcessName(text: String): String {
-        val match = Regex("Process:\\s*(\\S+)").find(text) ?: return ""
-        return match.groupValues[1]
-    }
-
-    /** "PID: 12345" → 12345 */
-    private fun extractPid(text: String): Int? {
-        val match = Regex("PID:\\s*(\\d+)").find(text) ?: return null
-        return match.groupValues[1].toIntOrNull()
     }
 }

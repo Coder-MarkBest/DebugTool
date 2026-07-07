@@ -8,6 +8,7 @@ import com.debugtools.core.ipc.model.DebugEvent
 import com.debugtools.core.module.DebugModule
 import com.debugtools.core.module.ModuleRegistry
 import com.debugtools.core.persistence.ScopedStorage
+import com.debugtools.core.recording.DebugRecordingManager
 import com.debugtools.core.window.BriefOrientation
 import com.debugtools.core.window.DisplayModeManager
 import com.debugtools.core.window.FloatingWindowManager
@@ -16,6 +17,7 @@ class DebugTools private constructor(private val builder: DebugToolsBuilder) {
     private val registry = ModuleRegistry()
     private val modeManager = DisplayModeManager()
     private val controller = DebugToolsController()
+    private val recordingManager = DebugRecordingManager()
     private var client: DebugToolsClient? = null
     private var windowManager: FloatingWindowManager? = null
 
@@ -32,7 +34,7 @@ class DebugTools private constructor(private val builder: DebugToolsBuilder) {
     }
 
     private fun setupAttached(context: Context, briefOrientation: BriefOrientation) {
-        windowManager = FloatingWindowManager(context, modeManager, briefOrientation).also {
+        windowManager = FloatingWindowManager(context, modeManager, briefOrientation, recordingManager).also {
             it.init(registry.modules)
         }
     }

@@ -20,17 +20,24 @@ import androidx.lifecycle.lifecycleScope
 import com.debugtools.audiomon.AudioMonitorModule
 import com.debugtools.startup.StartupMonitorModule
 import com.debugtools.conversation.ConversationMonitorModule
-import com.debugtools.conversation.ConversationTracer
+import com.debugtools.conversation.LinkTrace
+import com.debugtools.conversation.trace.LinkTraceEvent
+import com.debugtools.conversation.trace.LinkTraceProfile
+import com.debugtools.conversation.trace.MarkerRule
+import com.debugtools.conversation.trace.TraceCategory
+import com.debugtools.conversation.trace.TraceEventType
+import com.debugtools.conversation.trace.TraceOutcome
+import com.debugtools.conversation.trace.VoiceAssistantTraceMapping
+import com.debugtools.conversation.trace.VoiceAssistantTraceProfiles
 import com.debugtools.stability.StabilityModule
 import com.debugtools.stability.StabilityMonitor
-import com.debugtools.conversation.protocol.ConversationTurn
-import com.debugtools.conversation.protocol.StageStatus
-import com.debugtools.conversation.protocol.TurnOutcome
-import com.debugtools.conversation.protocol.TurnStage
 import com.debugtools.core.DebugTools
 import com.debugtools.core.ProcessMode
 import com.debugtools.core.ipc.model.DebugEvent
-import com.debugtools.general.GeneralModule
+import com.debugtools.general.AvailabilityItem
+import com.debugtools.general.AvailabilityItemSource
+import com.debugtools.general.AvailabilityModule
+import com.debugtools.general.AvailabilityStatus
 import com.debugtools.network.NetworkModule
 import com.debugtools.okhttp.NetworkCaptureModule
 import com.debugtools.perfmon.PerfMonitorModule
@@ -211,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(btnGenStartup)
 
         btnGenConversation = Button(this).apply {
-            text = "💬 生成示例对话链路（3 轮）"
+            text = "生成示例对话链路（4 个 requestId）"
             isEnabled = false
             setOnClickListener { generateSampleConversation() }
         }
@@ -271,21 +278,27 @@ class MainActivity : AppCompatActivity() {
         if (debugToolsInitialized) { toast("已初始化"); return }
         try {
             (application as SampleApplication).voiceModule = voiceModule
+            LinkTrace.init(applicationContext, sampleVoiceTraceProfile())
             DebugTools.builder(this)
                 .processMode(ProcessMode.ATTACHED)
-                .register(captureModule)
                 .register(perfModule)
                 .register(voiceModule)
-                .register(NetworkModule.create("8.8.8.8"))
+                .register(
+                    NetworkModule.builder()
+                        .gateway("8.8.8.8")
+                        .capture(captureModule)
+                        .build()
+                )
                 .register(timelineModule)
                 .register(audioModule)
                 .register(StartupMonitorModule())
                 .register(ConversationMonitorModule())
                 .register(StabilityModule())
                 .register(
-                    GeneralModule.builder(this)
-                        .addDiskMonitor(filesDir.absolutePath, intervalMinutes = 5)
-                        .addProcessMonitor(listOf(packageName))
+                    AvailabilityModule.builder(this)
+                        .addNetworkCheck()
+                        .addProcessCheck(listOf(packageName))
+                        .addExternalSource(sampleAvailabilitySource())
                         .build()
                 )
                 .build()
@@ -309,13 +322,49 @@ class MainActivity : AppCompatActivity() {
             btnGenStartup.isEnabled = true
             btnGenTraffic.isEnabled = true
             btnGenConversation.isEnabled = true
-            ConversationTracer.init(applicationContext)
             StabilityMonitor.init(applicationContext, listOf("com.debugtools.sample", "system_server"))
             appendLog("✅ DebugTools 初始化成功（ATTACHED 模式）")
-            appendLog("   已注册模块: 语音助手 / 网络 / 流程时间线 / 通用 / 音频监控 / 启动链路")
+            appendLog("   已注册模块: 设置项 / 网络（质量 + 抓包） / 流程时间线 / 可用性 / 音频监控 / 启动链路 / 对话链路")
         } catch (e: Exception) {
             appendLog("❌ 初始化失败: ${e.message}")
         }
+    }
+
+    private fun sampleAvailabilitySource() = AvailabilityItemSource {
+        listOf(
+            AvailabilityItem(
+                id = "overlay_permission",
+                title = "悬浮窗权限",
+                status = if (Settings.canDrawOverlays(this)) {
+                    AvailabilityStatus.AVAILABLE
+                } else {
+                    AvailabilityStatus.UNAVAILABLE
+                },
+                message = if (Settings.canDrawOverlays(this)) "已授权" else "未授权"
+            ),
+            AvailabilityItem(
+                id = "record_audio_permission",
+                title = "录音权限",
+                status = if (ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    AvailabilityStatus.AVAILABLE
+                } else {
+                    AvailabilityStatus.DEGRADED
+                },
+                message = if (ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    "已授权"
+                } else {
+                    "未授权"
+                }
+            )
+        )
     }
 
     private fun sendSingleMockEvent() {
@@ -452,64 +501,135 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Write 3 varied sample conversation turns to the tracer. */
+    private fun sampleVoiceTraceProfile(): LinkTraceProfile = VoiceAssistantTraceProfiles.standard(
+        mapping = VoiceAssistantTraceMapping(
+            startEvents = listOf("vadBegin"),
+            exit = "dialogExit",
+            vadBegin = "vadBegin",
+            vadEnd = "vadEnd",
+            executionEngineBegin = "ToolBegin",
+            executionEngineEnd = "ToolEnd"
+        ),
+        extraMarkers = listOf(
+            MarkerRule(
+                name = "AsrPartial",
+                label = "ASR 中间结果",
+                showInConversation = true,
+                includeInDuration = false,
+                category = TraceCategory.ASR,
+                order = 21
+            ),
+            MarkerRule(
+                name = "CacheHit",
+                label = "缓存命中",
+                showInConversation = false,
+                includeInDuration = false,
+                category = TraceCategory.CUSTOM,
+                order = 35
+            )
+        )
+    )
+
+    /** Write varied requestId-first link trace events to the new protocol. */
     private fun generateSampleConversation() {
-        appendLog("→ 写入示例对话链路…")
-        lifecycleScope.launch(Dispatchers.IO) {
-            ConversationTracer.startSession("demo-conv-1", mapOf("scene" to "导航"))
-
-            // Turn 1: success
-            ConversationTracer.submitTurn(ConversationTurn(
-                turnId = "demo-t1", turnIndex = 1, sessionId = "demo-conv-1",
-                startUptimeMs = SystemClock.uptimeMillis(),
-                endUptimeMs = SystemClock.uptimeMillis() + 800,
-                userInput = "导航到最近的加油站",
-                stages = listOf(
-                    TurnStage("唤醒", 0, 200, StageStatus.SUCCESS, null, null, null, "main"),
-                    TurnStage("ASR", 200, 500, StageStatus.SUCCESS, "[audio]", "导航到最近的加油站", null, "asr-1"),
-                    TurnStage("NLU", 500, 550, StageStatus.SUCCESS, "导航到最近的加油站", """{"intent":"导航","slots":{"dest":"加油站"}}""", null, "nlu-1"),
-                    TurnStage("TTS", 550, 750, StageStatus.SUCCESS, null, "已为您找到最近的加油站", null, "tts-1"),
-                    TurnStage("执行", 750, 800, StageStatus.SUCCESS, null, "OK", null, "exec-1")
-                ),
-                outcome = TurnOutcome.SUCCESS,
-                tags = listOf("导航")
-            ))
-
-            // Turn 2: NLU failure
-            ConversationTracer.submitTurn(ConversationTurn(
-                turnId = "demo-t2", turnIndex = 2, sessionId = "demo-conv-1",
-                startUptimeMs = SystemClock.uptimeMillis(),
-                endUptimeMs = SystemClock.uptimeMillis() + 600,
-                userInput = "打开空调",
-                stages = listOf(
-                    TurnStage("唤醒", 0, 150, StageStatus.SUCCESS, null, null, null, "main"),
-                    TurnStage("ASR", 150, 400, StageStatus.SUCCESS, "[audio]", "打开空调", null, "asr-1"),
-                    TurnStage("NLU", 400, 500, StageStatus.FAILED, "打开空调", null, "IntentNotFoundException: 未知意图", "nlu-1"),
-                    TurnStage("TTS", 500, 600, StageStatus.SKIPPED, null, null, null, "tts-1")
-                ),
-                outcome = TurnOutcome.FAILED,
-                tags = listOf("空调")
-            ))
-
-            // Turn 3: timeout + slow stage
-            ConversationTracer.submitTurn(ConversationTurn(
-                turnId = "demo-t3", turnIndex = 3, sessionId = "demo-conv-1",
-                startUptimeMs = SystemClock.uptimeMillis(),
-                endUptimeMs = SystemClock.uptimeMillis() + 2000,
-                userInput = "播放周杰伦的歌",
-                stages = listOf(
-                    TurnStage("唤醒", 0, 100, StageStatus.SUCCESS, null, null, null, "main"),
-                    TurnStage("ASR", 100, 400, StageStatus.SUCCESS, "[audio]", "播放周杰伦的歌", null, "asr-1"),
-                    TurnStage("NLU", 400, 450, StageStatus.SUCCESS, "播放周杰伦的歌", """{"intent":"播放音乐","slots":{"artist":"周杰伦"}}""", null, "nlu-1"),
-                    TurnStage("TTS", 450, 1350, StageStatus.SUCCESS, null, "好的，为您播放周杰伦", null, "tts-1")
-                ),
-                outcome = TurnOutcome.TIMEOUT,
-                tags = listOf("音乐")
-            ))
-
-            ConversationTracer.endSession("demo-conv-1")
-            runOnUiThread { appendLog("✅ 已写入 3 轮示例对话 — 打开「对话链路」Tab 查看") }
+        appendLog("→ 写入 requestId 示例对话链路…")
+        lifecycleScope.launch {
+            emitFullProfileRequest("demo-request-full")
+            emitSuccessfulRequest("demo-request-1")
+            emitNluFailureRequest("demo-request-2")
+            emitExitWithoutRequestId("demo-request-3")
+            appendLog("✅ 已写入 4 个 requestId 示例 — 打开「对话链路」Tab 查看")
         }
+    }
+
+    private suspend fun emitFullProfileRequest(requestId: String) {
+        emitStage(requestId, "vadBegin", "vadEnd", 40, mapOf("source" to "wake_word"))
+        emitStage(requestId, "AsrBegin", "AsrEnd", 60, endAttrs = mapOf("text" to "打开座椅加热并导航回家")) {
+            LinkTrace.instant(requestId, "AsrPartial", mapOf("text" to "打开座椅"))
+        }
+        emitStage(requestId, "AsrArbitrationBegin", "AsrArbitrationEnd", 35, endAttrs = mapOf("winner" to "cloud_asr"))
+        emitStage(requestId, "NluBegin", "NluEnd", 45, endAttrs = mapOf("intent" to "multi_action"))
+        emitStage(requestId, "NluArbitrationBegin", "NluArbitrationEnd", 30, endAttrs = mapOf("winner" to "vehicle_domain"))
+        emitStage(requestId, "ToolBegin", "ToolEnd", 70, beginAttrs = mapOf("tool" to "vehicle_control"), endAttrs = mapOf("result" to "seat_heat_on"))
+        emitStage(requestId, "TtsTextReceivedBegin", "TtsTextReceivedEnd", 25, endAttrs = mapOf("text" to "已为你打开座椅加热，正在导航回家"))
+        emitStage(requestId, "AudioFocusBegin", "AudioFocusEnd", 20, endAttrs = mapOf("focus" to "granted"))
+        emitStage(requestId, "CacheReadBegin", "CacheReadEnd", 20, endAttrs = mapOf("hit" to "true"))
+        LinkTrace.instant(requestId, "CacheHit", mapOf("key" to "home_route:last"))
+        emitStage(requestId, "SynthesisBegin", "SynthesisEnd", 80, endAttrs = mapOf("engine" to "local_tts"))
+        emitStage(requestId, "AudioTrackWriteBegin", "AudioTrackWriteEnd", 25, endAttrs = mapOf("frames" to "4096"))
+        emitStage(requestId, "TtsBegin", "TtsEnd", 90)
+        LinkTrace.finish(requestId, TraceOutcome.SUCCESS)
+    }
+
+    private suspend fun emitStage(
+        requestId: String,
+        beginName: String,
+        endName: String,
+        durationMs: Long,
+        beginAttrs: Map<String, String> = emptyMap(),
+        endAttrs: Map<String, String> = emptyMap(),
+        during: (suspend () -> Unit)? = null
+    ) {
+        LinkTrace.begin(requestId, beginName, beginAttrs)
+        val beforeDuring = (durationMs / 2).coerceAtLeast(1)
+        delay(beforeDuring)
+        during?.invoke()
+        delay((durationMs - beforeDuring).coerceAtLeast(1))
+        LinkTrace.end(requestId, endName, endAttrs)
+    }
+
+    private suspend fun emitSuccessfulRequest(requestId: String) {
+        LinkTrace.begin(requestId, "vadBegin", mapOf("source" to "wake_word"))
+        delay(120)
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
+        delay(130)
+        LinkTrace.instant(requestId, "AsrPartial", mapOf("text" to "导航到最近"))
+        delay(160)
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "导航到最近的加油站"))
+        LinkTrace.begin(requestId, "NluBegin")
+        delay(80)
+        LinkTrace.end(requestId, "NluEnd", mapOf("intent" to "navigate", "dest" to "加油站"))
+        LinkTrace.instant(requestId, "CacheHit", mapOf("key" to "poi:last_gas_station"))
+        LinkTrace.begin(requestId, "ToolBegin", mapOf("tool" to "map_search"))
+        delay(220)
+        LinkTrace.end(requestId, "ToolEnd", mapOf("result" to "ok"))
+        LinkTrace.begin(requestId, "TtsBegin")
+        delay(180)
+        LinkTrace.end(requestId, "TtsEnd")
+        LinkTrace.finish(requestId, TraceOutcome.SUCCESS)
+    }
+
+    private suspend fun emitNluFailureRequest(requestId: String) {
+        LinkTrace.begin(requestId, "vadBegin")
+        delay(60)
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
+        delay(520)
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "打开空气"))
+        LinkTrace.begin(requestId, "NluBegin")
+        delay(90)
+        LinkTrace.mark(LinkTraceEvent(
+            traceId = requestId,
+            name = "NluError",
+            type = TraceEventType.ERROR,
+            timestampUptimeMs = SystemClock.uptimeMillis(),
+            attributes = mapOf("reason" to "IntentNotFound")
+        ))
+        LinkTrace.finish(requestId, TraceOutcome.FAILED)
+    }
+
+    private suspend fun emitExitWithoutRequestId(requestId: String) {
+        LinkTrace.begin(requestId, "vadBegin")
+        delay(70)
+        LinkTrace.end(requestId, "vadEnd")
+        LinkTrace.begin(requestId, "AsrBegin")
+        delay(110)
+        LinkTrace.end(requestId, "AsrEnd", mapOf("text" to "播放周杰伦的歌"))
+        LinkTrace.begin(requestId, "NluBegin")
+        delay(70)
+        LinkTrace.end(requestId, "NluEnd", mapOf("intent" to "play_music"))
+        LinkTrace.finish(traceId = null, outcome = TraceOutcome.SUCCESS)
     }
 
     /** Write 5 varied sample startup sessions to the store so 「启动链路」 is populated without restarting. */

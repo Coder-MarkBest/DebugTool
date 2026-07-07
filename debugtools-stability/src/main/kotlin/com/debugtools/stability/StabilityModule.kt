@@ -4,9 +4,19 @@ import android.content.Context
 import android.view.View
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
+import com.debugtools.core.recording.ModuleRecordingResult
+import com.debugtools.core.recording.ModuleRecordingSnapshot
+import com.debugtools.core.recording.RecordableModule
+import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
+import com.debugtools.stability.protocol.CrashEntry
 import com.debugtools.stability.view.StabilityRootView
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,10 +26,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
-class StabilityModule : DebugModule {
+class StabilityModule : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = "stability"
+    override val recorderId: String = moduleId
     override val tabTitle: String = "稳定性"
 
     private var rootView: StabilityRootView? = null
@@ -40,11 +53,45 @@ class StabilityModule : DebugModule {
     }
 
     override fun createContentView(context: Context): View {
-        rootView = StabilityRootView(context)
+        rootView = StabilityRootView(context) { refreshAsync() }
+        refreshAsync()
         return rootView!!
     }
 
     override fun buildSettings(): List<SettingGroup> = emptyList()
+
+    override fun onRecordingStart(context: RecordingContext): ModuleRecordingSnapshot {
+        val status = StabilityMonitor.processAliveStatus()
+        return ModuleRecordingSnapshot(
+            moduleId = moduleId,
+            summary = mapOf(
+                "processes" to status.size.toString(),
+                "deadProcesses" to status.count { !it.value }.toString()
+            )
+        )
+    }
+
+    override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
+        val status = StabilityMonitor.processAliveStatus()
+        val entries = StabilityMonitor.searchNow()
+        val dir = File(context.rootDir, moduleId).apply { mkdirs() }
+        val file = File(dir, "stability.json")
+        file.writeText(JSONObject().apply {
+            put("processAliveStatus", JSONObject().apply {
+                status.forEach { (name, alive) -> put(name, alive) }
+            })
+            put("crashes", JSONArray().apply { entries.forEach { put(it.toJson()) } })
+        }.toString(2))
+        return ModuleRecordingResult(
+            moduleId = moduleId,
+            files = listOf(file),
+            summary = mapOf(
+                "processes" to status.size.toString(),
+                "deadProcesses" to status.count { !it.value }.toString(),
+                "crashes" to entries.size.toString()
+            )
+        )
+    }
 
     override fun getBriefItems(): List<BriefItem> {
         val status = StabilityMonitor.processAliveStatus()
@@ -53,15 +100,71 @@ class StabilityModule : DebugModule {
         return listOf(BriefItem(text = "$dead 个进程异常"))
     }
 
+    override fun getOverviewItems(): List<OverviewItem> {
+        val status = StabilityMonitor.processAliveStatus()
+        val crashCount = runCatching { StabilityMonitor.searchNow().size }.getOrDefault(0)
+        return listOf(overviewItem(status, crashCount))
+    }
+
     private fun startTimer() {
         timerJob?.cancel()
         timerJob = scope.launch {
             while (isActive) {
                 delay(60_000L)
-                withContext(Dispatchers.Main) {
-                    rootView?.refresh()
-                }
+                refreshAsync()
             }
+        }
+    }
+
+    private fun refreshAsync() {
+        val view = rootView ?: return
+        searchJob?.cancel()
+        searchJob = scope.launch {
+            withContext(Dispatchers.Main) { view.renderLoading() }
+            val result = runCatching {
+                StabilityMonitor.processAliveStatus() to StabilityMonitor.searchNow()
+            }
+            withContext(Dispatchers.Main) {
+                result.fold(
+                    onSuccess = { (status, entries) -> view.renderData(status, entries) },
+                    onFailure = { error -> view.renderError(error.message ?: "unknown error") }
+                )
+            }
+        }
+    }
+
+    private fun CrashEntry.toJson(): JSONObject = JSONObject().apply {
+        put("type", type.name)
+        put("processName", processName)
+        put("timestamp", timestamp)
+        put("sourcePath", sourcePath)
+        put("pid", pid)
+        put("stackTrace", stackTrace)
+    }
+
+    companion object {
+        fun overviewItem(processStatus: Map<String, Boolean>, crashCount: Int): OverviewItem {
+            if (processStatus.isEmpty() && crashCount == 0) {
+                return OverviewItem(
+                    moduleId = "stability",
+                    title = "稳定性",
+                    status = OverviewStatus.UNKNOWN,
+                    primaryText = "暂无稳定性数据"
+                )
+            }
+            val dead = processStatus.count { !it.value }
+            val status = if (dead > 0 || crashCount > 0) OverviewStatus.ERROR else OverviewStatus.OK
+            return OverviewItem(
+                moduleId = "stability",
+                title = "稳定性",
+                status = status,
+                primaryText = "进程 ${processStatus.size}项 · Crash $crashCount" +
+                    if (dead > 0) " · ${dead}异常" else "",
+                metrics = listOf(
+                    OverviewMetric("Crash", crashCount.toString(), if (crashCount > 0) OverviewStatus.ERROR else OverviewStatus.OK),
+                    OverviewMetric("进程异常", dead.toString(), if (dead > 0) OverviewStatus.ERROR else OverviewStatus.OK)
+                )
+            )
         }
     }
 }

@@ -11,10 +11,19 @@ import com.debugtools.audiomon.report.AudioReporter
 import com.debugtools.audiomon.view.AudioMonitorView
 import com.debugtools.core.module.BriefItem
 import com.debugtools.core.module.DebugModule
+import com.debugtools.core.overview.OverviewItem
+import com.debugtools.core.overview.OverviewMetric
+import com.debugtools.core.overview.OverviewProvider
+import com.debugtools.core.overview.OverviewStatus
 import com.debugtools.core.persistence.SettingsStorage
+import com.debugtools.core.recording.ModuleRecordingResult
+import com.debugtools.core.recording.ModuleRecordingSnapshot
+import com.debugtools.core.recording.RecordableModule
+import com.debugtools.core.recording.RecordingContext
 import com.debugtools.core.settings.SettingGroup
 import com.debugtools.core.settings.SettingItem
 import java.io.File
+import org.json.JSONObject
 
 /**
  * Debug module for dual-stream audio recording.
@@ -35,9 +44,10 @@ import java.io.File
  */
 class AudioMonitorModule(
     private val reporter: AudioReporter? = null
-) : DebugModule {
+) : DebugModule, RecordableModule, OverviewProvider {
 
     override val moduleId: String = "audiomon"
+    override val recorderId: String = moduleId
     override val tabTitle: String = "音频监控"
 
     private var presenter: AudioPresenter? = null
@@ -141,6 +151,30 @@ class AudioMonitorModule(
         )
     }
 
+    override fun onRecordingStart(context: RecordingContext): ModuleRecordingSnapshot {
+        return ModuleRecordingSnapshot(
+            moduleId = moduleId,
+            summary = mapOf("monitoring" to (presenter?.monitoring == true).toString())
+        )
+    }
+
+    override fun onRecordingStop(context: RecordingContext): ModuleRecordingResult {
+        val app = appContext
+        val dir = File(context.rootDir, moduleId).apply { mkdirs() }
+        val file = File(dir, "audio-state.json")
+        file.writeText(JSONObject().apply {
+            put("monitoring", presenter?.monitoring == true)
+            put("hasRecordPermission", app?.let { hasRecordPermission(it) } ?: false)
+            put("globalRecordingStartsMicrophone", false)
+            put("note", "AudioMonitor keeps its own explicit recording control; global recording captures module state only.")
+        }.toString(2))
+        return ModuleRecordingResult(
+            moduleId = moduleId,
+            files = listOf(file),
+            summary = mapOf("monitoring" to (presenter?.monitoring == true).toString())
+        )
+    }
+
     override fun getBriefItems(): List<BriefItem> {
         val active = presenter?.monitoring == true
         return listOf(
@@ -151,6 +185,9 @@ class AudioMonitorModule(
         )
     }
 
+    override fun getOverviewItems(): List<OverviewItem> =
+        listOf(overviewItem(presenter?.monitoring == true, appContext?.let { hasRecordPermission(it) }))
+
     private fun hasRecordPermission(context: Context): Boolean {
         return context.checkSelfPermission(
             Manifest.permission.RECORD_AUDIO
@@ -160,5 +197,31 @@ class AudioMonitorModule(
     private fun getDefaultSaveDir(context: Context): File {
         val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
         return externalDir ?: File(context.filesDir, "audio_recordings")
+    }
+
+    companion object {
+        fun overviewItem(monitoring: Boolean, hasRecordPermission: Boolean?): OverviewItem {
+            val status = when {
+                monitoring -> OverviewStatus.RECORDING
+                hasRecordPermission == false -> OverviewStatus.WARNING
+                hasRecordPermission == null -> OverviewStatus.UNKNOWN
+                else -> OverviewStatus.OK
+            }
+            return OverviewItem(
+                moduleId = "audiomon",
+                title = "音频监控",
+                status = status,
+                primaryText = when {
+                    monitoring -> "录制中"
+                    hasRecordPermission == false -> "缺少录音权限"
+                    hasRecordPermission == null -> "未初始化"
+                    else -> "已停止"
+                },
+                secondaryText = "全局录制只采集模块状态，麦克风录制需在音频页手动启动",
+                metrics = listOf(
+                    OverviewMetric("录制", if (monitoring) "是" else "否", status)
+                )
+            )
+        }
     }
 }

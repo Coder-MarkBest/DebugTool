@@ -1,0 +1,11 @@
+package com.debugtools.conversation.trace
+
+typealias LinkTraceProfile = VoiceTraceProfile
+typealias LinkTraceProfileBuilder = VoiceTraceProfileBuilder
+typealias LinkTraceProfileLoader = VoiceTraceProfileLoader
+typealias JsonLinkTraceProfileLoader = JsonVoiceTraceProfileLoader
+typealias LinkTraceRecorder = VoiceTraceRecorder
+typealias LinkTraceSnapshot = VoiceTraceSnapshot
+typealias LinkTraceAnalyzer = VoiceTraceAnalyzer
+typealias LinkTimelineItem = VoiceTimelineItem
+typealias AnalyzedLinkRequest = AnalyzedVoiceRequest
