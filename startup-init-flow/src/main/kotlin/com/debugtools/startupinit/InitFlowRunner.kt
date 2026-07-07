@@ -38,20 +38,22 @@ class InitFlowRunner internal constructor(
         var activeTasks = 0
 
         fun resolveBlockedTasks() {
-            val blocked = graph.blockedByFailures(
-                failedOrSkipped = failedOrSkipped,
-                completed = completed,
-                alreadyResolved = results.keys
-            )
-            for ((task, failedDependencies) in blocked) {
-                reporter.taskSkipped(task.name, failedDependencies)
-                results[task.name] = InitTaskResult(
-                    name = task.name,
-                    status = InitTaskStatus.SKIPPED,
-                    error = "Skipped because dependencies failed: ${failedDependencies.joinToString(",")}"
+            do {
+                val blocked = graph.blockedByFailures(
+                    failedOrSkipped = failedOrSkipped,
+                    completed = completed,
+                    alreadyResolved = results.keys
                 )
-                failedOrSkipped += task.name
-            }
+                for ((task, failedDependencies) in blocked) {
+                    reporter.taskSkipped(task.name, failedDependencies)
+                    results[task.name] = InitTaskResult(
+                        name = task.name,
+                        status = InitTaskStatus.SKIPPED,
+                        error = "Skipped because dependencies failed: ${failedDependencies.joinToString(",")}"
+                    )
+                    failedOrSkipped += task.name
+                }
+            } while (blocked.isNotEmpty())
         }
 
         fun launchReadyTasks() {

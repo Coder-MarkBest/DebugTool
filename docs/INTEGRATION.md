@@ -239,7 +239,7 @@ val client = OkHttpClient.Builder()
 
 ## 6. 对话链路 Trace 接入
 
-### 5.1 核心概念
+### 6.1 核心概念
 
 `debugtools-conversation` 使用 `LinkTrace` 记录业务链路。一个 `traceId` 表示一次业务请求：
 
@@ -250,7 +250,7 @@ val client = OkHttpClient.Builder()
 
 第一版不做多轮会话聚合，先保证一次请求内的链路可诊断。
 
-### 5.2 使用默认语音助手 profile
+### 6.2 使用默认语音助手 profile
 
 默认 profile：
 
@@ -290,7 +290,7 @@ LinkTrace.init(
 
 这些 stage 默认都展示在 UI，并参与性能耗时统计。
 
-### 5.3 适配宿主 App 的事件名
+### 6.3 适配宿主 App 的事件名
 
 如果业务已有事件名，不需要为了 DebugTools 改埋点名，使用 `VoiceAssistantTraceMapping` 映射即可：
 
@@ -310,7 +310,7 @@ LinkTrace.init(
 )
 ```
 
-### 5.4 记录事件
+### 6.4 记录事件
 
 ```kotlin
 val requestId = "req-001"
@@ -342,7 +342,7 @@ LinkTrace.mark(
 )
 ```
 
-### 5.5 UI 展示和 raw events 规则
+### 6.5 UI 展示和 raw events 规则
 
 对话链路模块会保留完整原始事件：
 
@@ -352,7 +352,7 @@ LinkTrace.mark(
 - `includeInDuration = false` 的 marker 可以展示，但不计入性能耗时。
 - `showInConversation = false` 的 marker 不展示，但仍保留在 raw events 和录制产物里。
 
-### 5.6 非语音业务链路
+### 6.6 非语音业务链路
 
 也可以用业务中立 DSL：
 

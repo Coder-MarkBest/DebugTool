@@ -43,6 +43,23 @@ class InitFlowRunnerTest {
     }
 
     @Test
+    fun `transitive failed dependency skips all downstream tasks`() = runTest {
+        val result = StartupInitFlow.builder()
+            .task("config") { suspendInit { error("missing config") } }
+            .task("asr", dependsOn = listOf("config")) { suspendInit { } }
+            .task("tts", dependsOn = listOf("asr")) { suspendInit { } }
+            .run()
+
+        assertFalse(result.success)
+        assertEquals(3, result.taskResults.size)
+        assertEquals(InitTaskStatus.FAILED, result.taskResults.first { it.name == "config" }.status)
+        assertEquals(InitTaskStatus.SKIPPED, result.taskResults.first { it.name == "asr" }.status)
+        val tts = result.taskResults.first { it.name == "tts" }
+        assertEquals(InitTaskStatus.SKIPPED, tts.status)
+        assertTrue(tts.error.orEmpty().contains("asr"))
+    }
+
+    @Test
     fun `dependent task starts as soon as dependency succeeds without waiting for unrelated task`() = runTest {
         val netStarted = CompletableDeferred<Unit>()
         val netRelease = CompletableDeferred<Unit>()
